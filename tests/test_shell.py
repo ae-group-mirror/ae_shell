@@ -45,8 +45,11 @@ from ae.shell import (
     MockedMainApp)
 
 
-# initialize test environment and declare test constants and fixtures
-LOCAL_VENV = read_file(".python-version").strip()
+# initialize test environment and declare test constants and fixtures (reduced tests on GitLab CI)
+try:
+    LOCAL_VENV = read_file(".python-version").strip()
+except FileNotFoundError:       # fails at GitLab CI
+    LOCAL_ENV = ""
 tst_repo_domain = "gitlab.com"
 
 curr_env = os.environ
