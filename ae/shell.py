@@ -203,7 +203,7 @@ from ae.core import main_app_instance                                           
 from ae.console import MAIN_SECTION_NAME, ConsoleApp                                        # type: ignore
 
 
-__version__ = '0.3.1'
+__version__ = '0.3.2'
 
 
 COMMIT_MSG_FILE_NAME = '.commit_msg.txt'                #: name of the file containing the commit message

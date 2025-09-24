@@ -25,7 +25,7 @@ setup_kwargs = {
     'license': 'GPL-3.0-or-later',
     'long_description': ('<!-- THIS FILE IS EXCLUSIVELY MAINTAINED by the project ae.ae v0.3.96 -->\n'
  '<!-- THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.tpl_namespace_root V0.3.14 -->\n'
- '# shell 0.3.1\n'
+ '# shell 0.3.2\n'
  '\n'
  '[![GitLab develop](https://img.shields.io/gitlab/pipeline/ae-group/ae_shell/develop?logo=python)](\n'
  '    https://gitlab.com/ae-group/ae_shell)\n'
@@ -108,7 +108,7 @@ setup_kwargs = {
         'Source': 'https://ae.readthedocs.io/en/latest/_modules/ae/shell.html'},
     'python_requires': '>=3.9',
     'url': 'https://gitlab.com/ae-group/ae_shell',
-    'version': '0.3.1',
+    'version': '0.3.2',
     'zip_safe': True,
 }
 
