@@ -182,6 +182,7 @@ this section includes various other utility functions and classes.
 - :data:`STDERR_BEG_MARKER`: marker used in the console output for the beginning of stderr output.
 - :data:`STDERR_END_MARKER`: marker used in the console output for the end of stderr output.
 """
+# pylint: disable=too-many-lines
 import os
 import pprint
 import shlex
@@ -203,7 +204,7 @@ from ae.core import main_app_instance                                           
 from ae.console import MAIN_SECTION_NAME, ConsoleApp                                        # type: ignore
 
 
-__version__ = '0.3.2'
+__version__ = '0.3.3'
 
 
 COMMIT_MSG_FILE_NAME = '.commit_msg.txt'                #: name of the file containing the commit message
@@ -1203,7 +1204,7 @@ def sh_exit_if_git_err(err_code: int, command_line: str,
     main_app = get_main_app()
     git_debug = main_app.verbose
     git_trace_vars = ('GIT_TRACE', 'GIT_TRACE_PACK_ACCESS', 'GIT_TRACE_PACKET', 'GIT_TRACE_SETUP')
-    env_vars = {}
+    env_vars = {'GIT_TERMINAL_PROMPT': "0"}
     if git_debug:
         env_vars['GIT_CURL_VERBOSE'] = "1"
         env_vars['GIT_MERGE_VERBOSITY'] = "5"
@@ -1212,7 +1213,7 @@ def sh_exit_if_git_err(err_code: int, command_line: str,
 
     cl_err = sh_exit_if_exec_err(err_code, command_line,
                                  extra_args=extra_args, lines_output=lines_output, exit_on_err=exit_on_err,
-                                 env_vars={**os.environ.copy(), **env_vars} if env_vars else None)
+                                 env_vars={**os.environ, **env_vars})
 
     if log_files := sh_logs(log_enable_dir=log_enable_dir, log_name_prefix='git'):
         sh_log(command_line, extra_args=extra_args, cl_err=cl_err, lines_output=lines_output, log_file_paths=log_files)
