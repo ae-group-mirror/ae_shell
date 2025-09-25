@@ -23,15 +23,15 @@ setup_kwargs = {
     'install_requires': [],
     'keywords': ['configuration', 'development', 'environment', 'productivity'],
     'license': 'GPL-3.0-or-later',
-    'long_description': ('<!-- THIS FILE IS EXCLUSIVELY MAINTAINED by the project ae.ae v0.3.96 -->\n'
- '<!-- THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.tpl_namespace_root V0.3.14 -->\n'
- '# shell 0.3.2\n'
+    'long_description': ('<!-- THIS FILE IS EXCLUSIVELY MAINTAINED by the project ae.ae v0.3.97 -->\n'
+ '<!-- THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.namespace_root_tpls v0.3.19 -->\n'
+ '# shell 0.3.3\n'
  '\n'
  '[![GitLab develop](https://img.shields.io/gitlab/pipeline/ae-group/ae_shell/develop?logo=python)](\n'
  '    https://gitlab.com/ae-group/ae_shell)\n'
  '[![LatestPyPIrelease](\n'
- '    https://img.shields.io/gitlab/pipeline/ae-group/ae_shell/release?logo=python)](\n'
- '    https://gitlab.com/ae-group/ae_shell/-/tree/release)\n'
+ '    https://img.shields.io/gitlab/pipeline/ae-group/ae_shell/release0.3.3?logo=python)](\n'
+ '    https://gitlab.com/ae-group/ae_shell/-/tree/release0.3.3)\n'
  '[![PyPIVersions](https://img.shields.io/pypi/v/ae_shell)](\n'
  '    https://pypi.org/project/ae-shell/#history)\n'
  '\n'
@@ -108,7 +108,7 @@ setup_kwargs = {
         'Source': 'https://ae.readthedocs.io/en/latest/_modules/ae/shell.html'},
     'python_requires': '>=3.9',
     'url': 'https://gitlab.com/ae-group/ae_shell',
-    'version': '0.3.2',
+    'version': '0.3.3',
     'zip_safe': True,
 }
 
