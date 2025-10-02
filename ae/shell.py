@@ -204,7 +204,7 @@ from ae.core import main_app_instance                                           
 from ae.console import MAIN_SECTION_NAME, ConsoleApp                                        # type: ignore
 
 
-__version__ = '0.3.3'
+__version__ = '0.3.4'
 
 
 COMMIT_MSG_FILE_NAME = '.commit_msg.txt'                #: name of the file containing the commit message
@@ -1258,10 +1258,11 @@ def sh_log(comment_or_command: str, extra_args: Iterable[str] = (), cl_err: int 
                  (f" * {cl_err=}" + sep if cl_err else "") +
                  ("   " + (sep + "   ").join(lines_output) + sep if lines_output else ""))
 
-    while "glpat-" in log_lines:    # hide the gitlab private token, e.g. from git-push-urls with authentication
-        start = log_lines.index("glpat-")
-        end = log_lines.index("@gitlab.com", start)
-        log_lines = log_lines[:start] + "private-token-" + log_lines[end - 3:]
+    for tok_beg, tok_end in (('glpat-', '@gitlab.com'), ('ghp_', '@github.com')):
+        while tok_beg in log_lines:    # hide the gitlab private token, e.g. from git-push-urls with authentication
+            start = log_lines.index(tok_beg)
+            end = log_lines.index(tok_end, start)
+            log_lines = log_lines[:start] + "private-token-" + log_lines[end - 3:]
 
     for log_path in log_file_paths or sh_logs(log_name_prefix=log_name_prefix):
         write_file(log_path, log_lines, extra_mode='a')
