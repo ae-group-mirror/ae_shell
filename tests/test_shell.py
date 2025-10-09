@@ -18,7 +18,7 @@ from tests.conftest import skip_gitlab_ci
 
 from ae.base import (
     DEF_PROJECT_PARENT_FOLDER, PY_CACHE_FOLDER,
-    camel_to_snake, in_wd, load_dotenvs, load_env_var_defaults, norm_name, norm_path,
+    camel_to_snake, in_wd, load_dotenvs, load_env_var_defaults, norm_name, norm_path, on_ci_host,
     os_path_basename, os_path_dirname, os_path_isdir, os_path_isfile, os_path_join, os_path_relpath,
     project_main_file, read_file, write_file, UNSET)
 from ae.core import DEBUG_LEVEL_DISABLED, DEBUG_LEVEL_ENABLED, DEBUG_LEVEL_VERBOSE
@@ -39,7 +39,7 @@ from ae.shell import (
     git_current_branch, git_diff, git_fetch, git_init_if_needed, git_merge, git_push,
     git_remote_domain_group, git_remotes, git_renew_remotes, git_status,
     git_tag_add, git_ref_in_branch, git_tag_list, git_tag_remotes, git_uncommitted,
-    hint, in_os_env, in_prj_dir_venv, in_venv, on_ci_host, owner_project_from_url, project_name_version,
+    hint, in_os_env, in_prj_dir_venv, in_venv, owner_project_from_url, project_name_version,
     sh_exec, sh_exit_if_exec_err, sh_exit_if_git_err, sh_log, sh_logs,
     temp_context_cleanup, temp_context_folders, temp_context_get_or_create, _temp_folders, venv_bin_path,
     MockedMainApp)
@@ -465,90 +465,45 @@ class TestGitCommands:
 
     @skip_gitlab_ci
     def test_git_branch_files_between_versions(self):
-        prj_path = norm_path("../aedev_git_repo_manager")   # ?!?!? CHANGE to pjm after switch: prj_path->"" version..v
-        exp = last_exp = {
-            'README.md',
-            'aedev/git_repo_manager.py',
-            'tests/test_git_repo_manager.py',
-        }
-
-        assert git_branch_files(prj_path, branch_or_tag="v0.3.59..v0.3.60") == exp
-
-        extra_61 = {'requirements.txt'}
-        exp = extra_61 | {
-            'README.md',
-            'aedev/git_repo_manager.py',
-        }
-
-        assert git_branch_files(prj_path, branch_or_tag="v0.3.60..v0.3.61") == exp
-
-        assert git_branch_files(prj_path, branch_or_tag="v0.3.59..v0.3.61") == exp | last_exp
-
+        prj_path = norm_path("../ae_base")
         exp = {
             'README.md',
-            'aedev/git_repo_manager/__init__.py',
-            'aedev/git_repo_manager/__main__.py',
-            'tests/test_git_repo_manager.py',
+            'ae/base.py',
+            'setup.py',
+            'tests/test_base.py',
         }
 
-        assert git_branch_files(prj_path, branch_or_tag="v0.3.65..v0.3.66") == exp
+        assert git_branch_files(prj_path, branch_or_tag="v0.3.69..v0.3.70") == exp
+        assert git_branch_files(prj_path, branch_or_tag="v0.3.70..v0.3.71") == exp
+        assert git_branch_files(prj_path, branch_or_tag="v0.3.71..v0.3.72") == exp
+        assert git_branch_files(prj_path, branch_or_tag="v0.3.69..v0.3.72") == exp
+        assert git_branch_files(prj_path, branch_or_tag="v0.3.69..v0.3.71") == exp
+        assert git_branch_files(prj_path, branch_or_tag="v0.3.70..v0.3.72") == exp
 
-        assert git_branch_files(prj_path, branch_or_tag="v0.3.65...v0.3.66") == exp
-
-        most = git_branch_files(prj_path, branch_or_tag="v0.3.65...v0.3.66", untracked=True,
-                                skip_file_path=lambda _:
-                                PY_CACHE_FOLDER in _
-                                or _.startswith(".idea")
-                                or _.startswith(".mypy_cache")
-                                or _.startswith(".pylint")
-                                or _.startswith(".pytest_cache")
-                                or _.startswith("htmlcov")
-                                or _.startswith("mypy_report")
-                                or _.startswith("aedev_git_repo_manager.egg-info")
-                                )
-        assert all(_ in most for _ in exp)
-
-        exp = big_exp = {
+        exp = {
             '.gitignore',
             '.gitlab-ci.yml',
             'CONTRIBUTING.rst',
             'LICENSE.md',
             'README.md',
             'SECURITY.md',
-            'aedev/git_repo_manager/__init__.py',
-            'aedev/git_repo_manager/__main__.py',
+            'ae/base.py',
             'dev_requirements.txt',
             'setup.py',
             'tests/conftest.py',
             'tests/requirements.txt',
+            'tests/test_base.py',
         }
 
-        assert git_branch_files(prj_path, branch_or_tag="v0.3.66..v0.3.67") == exp
+        assert git_branch_files(prj_path, branch_or_tag="v0.3.64..v0.3.65") == exp
+        assert git_branch_files(prj_path, branch_or_tag="v0.3.65..v0.3.66") == exp
+        assert git_branch_files(prj_path, branch_or_tag="v0.3.66..v0.3.67") == exp | {'pyproject.toml'}
+        assert git_branch_files(prj_path, branch_or_tag="v0.3.67..v0.3.68") == exp | {'pyproject.toml'}
+        assert git_branch_files(prj_path, branch_or_tag="v0.3.68..v0.3.69") == (
+                exp | {'pyproject.toml'}) - {'tests/test_base.py'}
 
-        assert git_branch_files(prj_path, branch_or_tag="v0.3.66...v0.3.67") == exp
-
-        extra_62 = {'pev.updates', 'tests/test_git_repo_manager.py'}
-
-        assert git_branch_files(prj_path, branch_or_tag="v0.3.61...v0.3.62") == exp | extra_62  # pkg __init__/__main__
-
-        assert git_branch_files(prj_path, branch_or_tag="v0.3.62...v0.3.63") == exp      # changed in v0.3.63
-
-        assert git_branch_files(prj_path, branch_or_tag="v0.3.66...v0.3.69") == exp      # 3 versions
-
-        exp = {
-            'README.md',
-            'aedev/git_repo_manager/__init__.py',
-            'aedev/git_repo_manager/__main__.py',
-        }
-        assert git_branch_files(prj_path, branch_or_tag="v0.3.67..v0.3.68") == exp
-
-        assert git_branch_files(prj_path, branch_or_tag="v0.3.67..v0.3.68") == exp
-
-        assert git_branch_files(prj_path, branch_or_tag="v0.3.68..v0.3.69") == exp
-
-        assert git_branch_files(prj_path, branch_or_tag="v0.3.68...v0.3.69") == exp
-
-        assert git_branch_files(prj_path, branch_or_tag="v0.3.59...v0.3.69") == extra_61 | extra_62 | big_exp
+        assert git_branch_files(prj_path, branch_or_tag="v0.3.64..v0.3.69") == exp | {'pyproject.toml'}
+        assert git_branch_files(prj_path, branch_or_tag="v0.3.64..v0.3.72") == exp | {'pyproject.toml'}
 
     def test_git_branch_files_excludes(self, changed_repo_path):
         assert git_branch_files(changed_repo_path) == {'ChangeD.y', 'deleteD.x', 'rename.it'}
@@ -1496,27 +1451,6 @@ class TestHelpers:
         with patch('ae.shell.debug_or_verbose', return_value=False):
             assert not hint("hint command", _hint_tst_callable, "extra message")
             assert not hint("hint command", _hint_tst_callable.__name__, "extra message")
-
-    @skip_gitlab_ci
-    def test_on_ci_host_local(self):
-        assert not on_ci_host()
-
-    def test_on_ci_host_on_gitlab(self):
-        assert on_ci_host() == ('CI_PROJECT_ID' in os.environ)
-
-    @skip_gitlab_ci
-    def test_on_ci_host_with_ci_var(self, monkeypatch):
-        assert not on_ci_host()
-
-        monkeypatch.setenv('CI', "any value")
-        assert on_ci_host()
-
-    @skip_gitlab_ci
-    def test_on_ci_host_with_ci_project_id(self, monkeypatch):
-        assert not on_ci_host()
-
-        monkeypatch.setenv('CI_PROJECT_ID', "any value")
-        assert on_ci_host()
 
     def test_owner_project_from_url(self):
         assert owner_project_from_url("owner/project") == "owner/project"

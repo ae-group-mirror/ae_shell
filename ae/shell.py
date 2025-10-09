@@ -204,7 +204,7 @@ from ae.core import main_app_instance                                           
 from ae.console import MAIN_SECTION_NAME, ConsoleApp                                        # type: ignore
 
 
-__version__ = '0.3.4'
+__version__ = '0.3.5'
 
 
 COMMIT_MSG_FILE_NAME = '.commit_msg.txt'                #: name of the file containing the commit message
@@ -1031,14 +1031,6 @@ def in_venv(name: str = "") -> Iterator[None]:
     yield
     if old_venv:
         activate_venv(old_venv)
-
-
-def on_ci_host() -> bool:
-    """ check and return True if this tool is running on the GitLab/GitHub CI host/server.
-
-    :return:                    True if running on CI host, else False
-    """
-    return 'CI' in os.environ or 'CI_PROJECT_ID' in os.environ
 
 
 def owner_project_from_url(remote_url: str) -> str:
