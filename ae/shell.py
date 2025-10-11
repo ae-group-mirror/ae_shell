@@ -174,6 +174,7 @@ this section includes various other utility functions and classes.
 - :func:`get_main_app`: retrieves the main application instance, or a mock instance if one does not exist.
 - :func:`get_pypi_versions`: determines all available release versions of a package on PyPI.
 - :func:`hint`: provides a hint message based on the provided arguments.
+- :func:`mask_token`: hide/mask tokens in a text block, to prevent to show them in logs or error messages.
 - :func:`prg_git_project_path`: determines the project root path from the current working directory.
 
 - :class:`MockedMainApp`: a mock class for a main application instance.
@@ -192,7 +193,7 @@ import tempfile
 
 from contextlib import contextmanager
 from urllib.parse import urlparse
-from typing import Optional, Iterator, Iterable, cast, Callable, Any, Union, MutableMapping
+from typing import Any, Callable, Iterable, Iterator, MutableMapping, Optional, Union, cast, overload
 
 import requests
 from packaging.version import Version
@@ -204,7 +205,7 @@ from ae.core import main_app_instance                                           
 from ae.console import MAIN_SECTION_NAME, ConsoleApp                                        # type: ignore
 
 
-__version__ = '0.3.5'
+__version__ = '0.3.6'
 
 
 COMMIT_MSG_FILE_NAME = '.commit_msg.txt'                #: name of the file containing the commit message
@@ -1033,6 +1034,39 @@ def in_venv(name: str = "") -> Iterator[None]:
         activate_venv(old_venv)
 
 
+@overload
+def mask_token(text: str) -> str: ...
+
+
+@overload
+def mask_token(text: list[str]) -> list[str]: ...
+
+
+def mask_token(text: Union[str, list[str]]) -> Union[str, list[str]]:
+    """ hide most parts of any GitHub/GitHub tokens found in the specified text/-lines.
+
+    :param text:                text block, specified either as str object or an iterable of str objects (lines),
+                                to detect tokens within, to hide/mask the most part of them.
+    :return:                    text block with without the complete tokens.
+
+    .. note:: see also :func:`ae.base.mask_url` to hide passwords and tokens in URLs.
+    """
+    if is_str_arg := isinstance(text, str):
+        lines = [text]
+    else:
+        lines = list(text)  # copy to not change text list content
+
+    for tok_beg, tok_end in (('glpat-', '@gitlab.com'), ('ghp_', '@github.com')):
+        for idx, line in enumerate(lines):
+            while tok_beg in line:  # hide the GitLab/GitHub private token, e.g. from git-push-urls with authentication
+                start = line.index(tok_beg)
+                end = line.index(tok_end, start)
+                line = line[:start + 3] + "***-masked-token-***" + line[end - 3:]
+            lines[idx] = line
+
+    return lines[0] if is_str_arg else lines
+
+
 def owner_project_from_url(remote_url: str) -> str:
     """ determine the owner and project name path from the specified git remote repository url.
 
@@ -1069,7 +1103,7 @@ def project_name_version(imp_or_pkg_name: str, packages_versions: Iterable[str])
 
 
 # pylint: disable-next=too-many-arguments,too-many-positional-arguments
-def sh_exec(command_line: str, extra_args: Iterable = (), console_input: str = "",
+def sh_exec(command_line: str, extra_args: Iterable[str] = (), console_input: str = "",
             lines_output: Optional[list[str]] = None, main_app: Optional[Any] = None, shell: bool = False,
             env_vars: Optional[dict[str, str]] = None) -> int:
     """ execute command in the current working directory of the OS console/shell.
@@ -1093,7 +1127,7 @@ def sh_exec(command_line: str, extra_args: Iterable = (), console_input: str = "
     merge_err = bool(lines_output)      # == -''- and len(lines_output) > 0
     print_out = main_app.po if main_app else print if main_app is None else dummy_function
     debug_out = main_app.dpo if main_app else dummy_function
-    debug_out(f"    . executing at {os.getcwd()}: {args}")
+    debug_out(f"    . executing at {os.getcwd()}: {mask_token(args)}")
 
     result: Union[subprocess.CompletedProcess, subprocess.CalledProcessError]   # having: stdout/stderr/returncode
     try:
@@ -1105,10 +1139,10 @@ def sh_exec(command_line: str, extra_args: Iterable = (), console_input: str = "
                                 shell=shell,
                                 env=env_vars)
     except subprocess.CalledProcessError as ex:                     # pragma: no cover
-        debug_out(f"****  subprocess.run({args=}) returned non-zero exit code {ex.returncode}; {ex=}")
+        debug_out(f"****  subprocess.run({mask_token(args)}) returned non-zero exit code {ex.returncode}; {ex=}")
         result = ex
     except Exception as ex:                                         # pylint: disable=broad-except  # pragma: no cover
-        print_out(f"****  subprocess.run({args}) raised exception {ex}")
+        print_out(f"****  subprocess.run({mask_token(args)}) raised exception {ex}")
         return 126
 
     if ret_out:
@@ -1125,7 +1159,7 @@ def sh_exec(command_line: str, extra_args: Iterable = (), console_input: str = "
 
 # pylint: disable-next=too-many-arguments,too-many-positional-arguments
 def sh_exit_if_exec_err(err_code: int, command_line: str,
-                        extra_args: Iterable = (), lines_output: Optional[list[str]] = None,
+                        extra_args: Iterable[str] = (), lines_output: Optional[list[str]] = None,
                         exit_on_err: bool = True, exit_msg: str = "", shell: bool = False,
                         env_vars: Optional[dict[str, str]] = None) -> int:
     """ execute command in the current working directory of the OS console/shell, dump error, and exit app if needed.
@@ -1160,19 +1194,19 @@ def sh_exit_if_exec_err(err_code: int, command_line: str,
                 main_app.po(" " * 6 + line)
         msg = f"command: {command_line} " + " ".join('"' + arg + '"' if " " in arg else arg for arg in extra_args)
         if not sh_err:
-            main_app.dpo(f"    = successfully executed {msg}")
+            main_app.dpo(f"    = successfully executed {mask_token(msg)}")
         else:
             if exit_msg:
                 main_app.po(f"      {exit_msg}")
-            check_if(err_code, not exit_on_err, f"sh_exit_if_exec_err error {sh_err} in {msg}")        # app exit
+            check_if(err_code, not exit_on_err, f"sh_exit_if_exec_err error {sh_err} in {mask_token(msg)}")  # app exit
 
     return sh_err
 
 
 # pylint: disable-next=too-many-arguments,too-many-positional-arguments,too-many-locals
 def sh_exit_if_git_err(err_code: int, command_line: str,
-                       extra_args: Iterable = (), lines_output: Optional[list[str]] = None, exit_on_err: bool = False,
-                       log_enable_dir: str = "") -> list[str]:
+                       extra_args: Iterable[str] = (), lines_output: Optional[list[str]] = None,
+                       exit_on_err: bool = False, log_enable_dir: str = "") -> list[str]:
     """ execute git command with optional git trace output, returning the stdout lines cleaned from any trace messages.
 
     :param err_code:            error code to pass to the console as exit code if :paramref:`.exit_on_err` is True.
@@ -1211,8 +1245,9 @@ def sh_exit_if_git_err(err_code: int, command_line: str,
         sh_log(command_line, extra_args=extra_args, cl_err=cl_err, lines_output=lines_output, log_file_paths=log_files)
 
     if cl_err:  # if cl_err and exit_on_err then it would have exit the Python interpreter (so never would run to here)
-        main_app.vpo(f"    # ignored error {cl_err} of {command_line=} with {extra_args=} and git trace {env_vars=}")
-        lines_output.insert(0, EXEC_GIT_ERR_PREFIX + str(cl_err) + f" in {command_line=} with {extra_args=}")
+        cmd_line = mask_token([command_line] + list(extra_args))
+        main_app.vpo(f"    # ignored error {cl_err} of `{cmd_line}` and git trace {env_vars=}")
+        lines_output.insert(0, EXEC_GIT_ERR_PREFIX + str(cl_err) + f" in {cmd_line}")
 
     if STDERR_BEG_MARKER in lines_output and (  # output marker only if stderr not got merged/called w/ lines_output==[]
             git_debug or any(os.environ.get(_, "0") in ("true", "1", "2") for _ in git_trace_vars)):
@@ -1224,7 +1259,7 @@ def sh_exit_if_git_err(err_code: int, command_line: str,
                 main_app.po(sep + lines_output[line_no])
         lines_output[:] = lines_output[:start]      # del output[start:]
 
-    return lines_output
+    return list(mask_token(lines_output))
 
 
 # pylint: disable-next=too-many-arguments,too-many-positional-arguments
@@ -1250,11 +1285,7 @@ def sh_log(comment_or_command: str, extra_args: Iterable[str] = (), cl_err: int 
                  (f" * {cl_err=}" + sep if cl_err else "") +
                  ("   " + (sep + "   ").join(lines_output) + sep if lines_output else ""))
 
-    for tok_beg, tok_end in (('glpat-', '@gitlab.com'), ('ghp_', '@github.com')):
-        while tok_beg in log_lines:    # hide the gitlab private token, e.g. from git-push-urls with authentication
-            start = log_lines.index(tok_beg)
-            end = log_lines.index(tok_end, start)
-            log_lines = log_lines[:start] + "private-token-" + log_lines[end - 3:]
+    log_lines = mask_token(log_lines)
 
     for log_path in log_file_paths or sh_logs(log_name_prefix=log_name_prefix):
         write_file(log_path, log_lines, extra_mode='a')

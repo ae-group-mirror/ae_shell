@@ -39,7 +39,7 @@ from ae.shell import (
     git_current_branch, git_diff, git_fetch, git_init_if_needed, git_merge, git_push,
     git_remote_domain_group, git_remotes, git_renew_remotes, git_status,
     git_tag_add, git_ref_in_branch, git_tag_list, git_tag_remotes, git_uncommitted,
-    hint, in_os_env, in_prj_dir_venv, in_venv, owner_project_from_url, project_name_version,
+    hint, in_os_env, in_prj_dir_venv, in_venv, mask_token, owner_project_from_url, project_name_version,
     sh_exec, sh_exit_if_exec_err, sh_exit_if_git_err, sh_log, sh_logs,
     temp_context_cleanup, temp_context_folders, temp_context_get_or_create, _temp_folders, venv_bin_path,
     MockedMainApp)
@@ -1451,6 +1451,19 @@ class TestHelpers:
         with patch('ae.shell.debug_or_verbose', return_value=False):
             assert not hint("hint command", _hint_tst_callable, "extra message")
             assert not hint("hint command", _hint_tst_callable.__name__, "extra message")
+
+    def test_mask_token(self):
+        token = "glpat-gitlab token format ending with an @/ampersand and the gitlab.com domain"
+        text = "a text block containing a gitlab URL with a token: https://UsaNäm:" + token + "@gitlab.com"
+
+        assert token not in mask_token(text)
+        assert token not in mask_token([text])[0]
+
+        token = "ghp_-github token format ending with an @/ampersand and the github.com domain"
+        text = "a text block containing a github URL with a token: https://YouSaNem:" + token + "@github.com"
+
+        assert token not in mask_token(text)
+        assert token not in mask_token([text])[0]
 
     def test_owner_project_from_url(self):
         assert owner_project_from_url("owner/project") == "owner/project"
