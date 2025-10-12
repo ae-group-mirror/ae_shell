@@ -1453,17 +1453,21 @@ class TestHelpers:
             assert not hint("hint command", _hint_tst_callable.__name__, "extra message")
 
     def test_mask_token(self):
-        token = "glpat-gitlab token format ending with an @/ampersand and the gitlab.com domain"
+        token = "glpat-gitlab token format ending at the @/ampersand directly followed by the gitlab.com domain"
         text = "a text block containing a gitlab URL with a token: https://UsaNäm:" + token + "@gitlab.com"
 
         assert token not in mask_token(text)
         assert token not in mask_token([text])[0]
 
-        token = "ghp_-github token format ending with an @/ampersand and the github.com domain"
+        token = "ghp_-github token format ending at the @/ampersand directly followed by the github.com domain"
         text = "a text block containing a github URL with a token: https://YouSaNem:" + token + "@github.com"
 
         assert token not in mask_token(text)
         assert token not in mask_token([text])[0]
+
+        text = "skip masking of text blocks with a start token like ghp_ or glpat- but missing end token"
+
+        assert mask_token(text) == text     # neither throws str.index()-ValueError nor stuck in endless-loop
 
     def test_owner_project_from_url(self):
         assert owner_project_from_url("owner/project") == "owner/project"

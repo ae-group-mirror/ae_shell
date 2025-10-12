@@ -205,7 +205,7 @@ from ae.core import main_app_instance                                           
 from ae.console import MAIN_SECTION_NAME, ConsoleApp                                        # type: ignore
 
 
-__version__ = '0.3.6'
+__version__ = '0.3.7'
 
 
 COMMIT_MSG_FILE_NAME = '.commit_msg.txt'                #: name of the file containing the commit message
@@ -1045,7 +1045,7 @@ def mask_token(text: list[str]) -> list[str]: ...
 def mask_token(text: Union[str, list[str]]) -> Union[str, list[str]]:
     """ hide most parts of any GitHub/GitHub tokens found in the specified text/-lines.
 
-    :param text:                text block, specified either as str object or an iterable of str objects (lines),
+    :param text:                text block, specified either as str object or as a list of str objects (lines),
                                 to detect tokens within, to hide/mask the most part of them.
     :return:                    text block with without the complete tokens.
 
@@ -1060,7 +1060,9 @@ def mask_token(text: Union[str, list[str]]) -> Union[str, list[str]]:
         for idx, line in enumerate(lines):
             while tok_beg in line:  # hide the GitLab/GitHub private token, e.g. from git-push-urls with authentication
                 start = line.index(tok_beg)
-                end = line.index(tok_end, start)
+                end = line.find(tok_end, start)
+                if end == -1:
+                    break
                 line = line[:start + 3] + "***-masked-token-***" + line[end - 3:]
             lines[idx] = line
 
