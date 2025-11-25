@@ -31,7 +31,7 @@ from ae.core import main_app_instance, AppBase                                  
 from ae.console import MAIN_SECTION_NAME, ConsoleApp                                        # type: ignore
 
 
-__version__ = '0.3.8'
+__version__ = '0.3.9'
 
 
 STDERR_BEG_MARKER = "vvv   STDERR   vvv"                #: :paramref:`ae.shell.sh_exec.lines_output` begin stderr lines
@@ -174,6 +174,7 @@ def sh_exec(command_line: str, extra_args: Iterable[str] = (), console_input: st
     args = command_line + " " + " ".join(extra_args) if shell else shlex.split(command_line) + list(extra_args)
     ret_out = lines_output is not None  # == isinstance(lines_output, list)
     merge_err = bool(lines_output)      # == -''- and len(lines_output) > 0
+    app_obj = app_obj or main_app_instance()
     print_out = app_obj.po if app_obj else dummy_function if app_obj is UNSET else print
     debug_out = app_obj.dpo if app_obj else dummy_function if app_obj is UNSET else print
     debug_out(f"    . executing at {os.getcwd()}: {mask_token(args)}")
