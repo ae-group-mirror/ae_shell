@@ -31,7 +31,7 @@ from ae.core import main_app_instance, AppBase                                  
 from ae.console import MAIN_SECTION_NAME, ConsoleApp                                        # type: ignore
 
 
-__version__ = '0.3.9'
+__version__ = '0.3.10'
 
 
 STDERR_BEG_MARKER = "vvv   STDERR   vvv"                #: :paramref:`ae.shell.sh_exec.lines_output` begin stderr lines
@@ -123,20 +123,20 @@ def mask_token(text: list[str]) -> list[str]: ...
 
 
 def mask_token(text: Union[str, list[str]]) -> Union[str, list[str]]:
-    """ hide most parts of any GitHub/GitHub tokens found in the specified text/-lines.
+    """ hide most parts of any Codeberg/GitHub/GitHub tokens found in the specified text/-lines.
 
     :param text:                text block, specified either as str object or as a list of str objects (lines),
                                 to detect tokens within, to hide/mask the most part of them.
     :return:                    text block with without the complete tokens.
 
-    .. note:: see also :func:`ae.base.mask_url` to hide passwords and tokens in URLs.
+    .. note:: see also :func:`ae.base.mask_url` of a more generic way to hide passwords and tokens in URLs.
     """
     if is_str_arg := isinstance(text, str):
         lines = [text]
     else:
         lines = list(text)  # copy to not change text list content
 
-    for tok_beg, tok_end in (('glpat-', '@gitlab.com'), ('ghp_', '@github.com')):
+    for tok_beg, tok_end in ((':', '@codeberg.org'), ('glpat-', '@gitlab.com'), ('ghp_', '@github.com')):
         for idx, line in enumerate(lines):
             while tok_beg in line:  # hide the GitLab/GitHub private token, e.g. from git-push-urls with authentication
                 start = line.index(tok_beg)
