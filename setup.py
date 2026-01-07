@@ -52,7 +52,11 @@ setup_kwargs = {
             'types-setuptools',
         ],
     },
-    'install_requires': [],
+    'install_requires': [
+        'ae_base',
+        'ae_core',
+        'ae_console',
+    ],
     'keywords': [
         'configuration',
         'development',
@@ -77,7 +81,7 @@ setup_kwargs = {
     },
     'python_requires': '>=3.12',
     'url': 'https://gitlab.com/ae-group/ae_shell',
-    'version': '0.3.10',
+    'version': '0.3.11',
     'zip_safe': True,
 }
 

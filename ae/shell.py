@@ -31,7 +31,7 @@ from ae.core import main_app_instance, AppBase                                  
 from ae.console import MAIN_SECTION_NAME, ConsoleApp                                        # type: ignore
 
 
-__version__ = '0.3.10'
+__version__ = '0.3.11'
 
 
 STDERR_BEG_MARKER = "vvv   STDERR   vvv"                #: :paramref:`ae.shell.sh_exec.lines_output` begin stderr lines
