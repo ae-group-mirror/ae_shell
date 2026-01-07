@@ -31,7 +31,7 @@ from ae.core import main_app_instance, AppBase                                  
 from ae.console import MAIN_SECTION_NAME, ConsoleApp                                        # type: ignore
 
 
-__version__ = '0.3.11'
+__version__ = '0.3.12'
 
 
 STDERR_BEG_MARKER = "vvv   STDERR   vvv"                #: :paramref:`ae.shell.sh_exec.lines_output` begin stderr lines
@@ -123,11 +123,11 @@ def mask_token(text: list[str]) -> list[str]: ...
 
 
 def mask_token(text: Union[str, list[str]]) -> Union[str, list[str]]:
-    """ hide most parts of any Codeberg/GitHub/GitHub tokens found in the specified text/-lines.
+    """ hide most parts of any Codeberg/GitHub/GitHub URL tokens found in the specified text/-lines.
 
-    :param text:                text block, specified either as str object or as a list of str objects (lines),
-                                to detect tokens within, to hide/mask the most part of them.
-    :return:                    text block with without the complete tokens.
+    :param text:                text, specified either as str object or as a list of str objects (lines),
+                                each str/line get searched for URL tokens, to hide/mask the most part of them.
+    :return:                    text with masked URL tokens (only leaving the first/last 3 token characters unmasked).
 
     .. note:: see also :func:`ae.base.mask_url` of a more generic way to hide passwords and tokens in URLs.
     """
@@ -136,14 +136,15 @@ def mask_token(text: Union[str, list[str]]) -> Union[str, list[str]]:
     else:
         lines = list(text)  # copy to not change text list content
 
+    url_beg = 'https://'  # PDV_REPO_HOST_PROTOCOL
+    url_beg_len = len(url_beg)
     for tok_beg, tok_end in ((':', '@codeberg.org'), ('glpat-', '@gitlab.com'), ('ghp_', '@github.com')):
         for idx, line in enumerate(lines):
-            while tok_beg in line:  # hide the GitLab/GitHub private token, e.g. from git-push-urls with authentication
-                start = line.index(tok_beg)
-                end = line.find(tok_end, start)
-                if end == -1:
-                    break
-                line = line[:start + 3] + "***-masked-token-***" + line[end - 3:]
+            beg = -1
+            while ((beg := line.find(url_beg, beg + 1)) != -1 and
+                   (beg := line.find(tok_beg, beg + url_beg_len)) != -1 and
+                   (end := line.find(tok_end, beg)) != -1):
+                line = line[:beg + 3] + "***-masked-token-***" + line[end - 3:]
             lines[idx] = line
 
     return lines[0] if is_str_arg else lines
