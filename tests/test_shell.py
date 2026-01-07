@@ -210,19 +210,33 @@ class TestHelpers:
         assert os.environ == os_env
 
     def test_mask_token(self):
-        token = "glpat-gitlab token format ending at the @/ampersand directly followed by the gitlab.com domain"
-        text = "a text block containing a gitlab URL with a token: https://UsaNäm:" + token + "@gitlab.com"
+        url_prefix_str = "https://"  # PDV_REPO_HOST_PROTOCOL
+
+        token = "codeberg token does not have a prefix and only contains hex-digits followed by @ and codeberg.org"
+        text = f"a text block containing a codeberg URL with a token: {url_prefix_str}UsaNäm:{token}@codeberg.org"
 
         assert token not in mask_token(text)
         assert token not in mask_token([text])[0]
+        assert mask_token(text).count('codeberg.org') == 1
+        assert mask_token(text).count(':') == 3
+
+        token = "glpat-gitlab token format ending at the @/ampersand directly followed by the gitlab.com domain"
+        text = "a text block containing a gitlab URL with a glpat-token: https://UsaNäm:" + token + "@gitlab.com"
+
+        assert token not in mask_token(text)
+        assert token not in mask_token([text])[0]
+        assert mask_token(text).count('gitlab.com') == 1
+        assert mask_token(text).count('glpat-') == 1
 
         token = "ghp_-github token format ending at the @/ampersand directly followed by the github.com domain"
-        text = "a text block containing a github URL with a token: https://YouSaNem:" + token + "@github.com"
+        text = "a text block containing a github URL with a ghp_-token: https://YouSaNem:" + token + "@github.com"
 
         assert token not in mask_token(text)
         assert token not in mask_token([text])[0]
+        assert mask_token(text).count('github.com') == 1
+        assert mask_token(text).count('ghp_') == 1
 
-        text = "skip masking of text blocks with a start token like ghp_ or glpat- but missing end token"
+        text = "NO masking if @codeberg.org/@github.com/@gitlab.com domains before token start str ':', ghp_ or glpat-:"
 
         assert mask_token(text) == text     # neither throws str.index()-ValueError nor stuck in endless-loop
 
