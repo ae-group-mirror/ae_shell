@@ -31,7 +31,7 @@ from ae.core import main_app_instance, AppBase                                  
 from ae.console import MAIN_SECTION_NAME, ConsoleApp                                        # type: ignore
 
 
-__version__ = '0.3.12'
+__version__ = '0.3.13'
 
 
 STDERR_BEG_MARKER = "vvv   STDERR   vvv"                #: :paramref:`ae.shell.sh_exec.lines_output` begin stderr lines
@@ -199,10 +199,10 @@ def sh_exec(command_line: str, extra_args: Iterable[str] = (), console_input: st
     if ret_out:
         assert isinstance(lines_output, list), "silly mypy doesn't recognize ret_out"
         if result.stdout:
-            lines_output.extend([line for line in result.stdout.decode().split(os.linesep) if line])
+            lines_output.extend([line for line in result.stdout.decode().splitlines() if line.strip()])
         if not merge_err and result.stderr:
             lines_output.append(STDERR_BEG_MARKER)
-            lines_output.extend([line for line in result.stderr.decode().split(os.linesep) if line])
+            lines_output.extend([line for line in result.stderr.decode().splitlines() if line.strip()])
             lines_output.append(STDERR_END_MARKER)
 
     return result.returncode
