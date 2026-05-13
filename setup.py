@@ -50,6 +50,7 @@ setup_kwargs = {
     },
     'install_requires': [
         'ae_base',
+        'ae_system',
         'ae_core',
         'ae_console',
     ],
@@ -77,7 +78,7 @@ setup_kwargs = {
     },
     'python_requires': '>=3.12',
     'url': 'https://gitlab.com/ae-group/ae_shell',
-    'version': '0.3.13',
+    'version': '0.3.14',
     'zip_safe': True,
 }
 
