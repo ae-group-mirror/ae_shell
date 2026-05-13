@@ -1,4 +1,5 @@
 # runtime dependencies of the ae.shell project
 ae_base
+ae_system
 ae_core
 ae_console

@@ -26,12 +26,13 @@ import subprocess
 from contextlib import contextmanager
 from typing import Any, Callable, Iterable, Iterator, MutableMapping, Optional, Union, cast, overload
 
-from ae.base import UNSET, dummy_function, env_str, load_env_var_defaults, norm_name        # type: ignore
+from ae.base import UNSET, dummy_function, env_str, norm_name                               # type: ignore
+from ae.system import load_env_var_defaults                                                 # type: ignore
 from ae.core import main_app_instance, AppBase                                              # type: ignore
 from ae.console import MAIN_SECTION_NAME, ConsoleApp                                        # type: ignore
 
 
-__version__ = '0.3.13'
+__version__ = '0.3.14'
 
 
 STDERR_BEG_MARKER = "vvv   STDERR   vvv"                #: :paramref:`ae.shell.sh_exec.lines_output` begin stderr lines

@@ -1,12 +1,12 @@
 <!-- THIS FILE IS EXCLUSIVELY MAINTAINED by the project ae.ae v0.3.103 -->
 <!-- THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.namespace_root_tpls v0.3.22 -->
-# shell 0.3.13
+# shell 0.3.14
 
 [![GitLab develop](https://img.shields.io/gitlab/pipeline/ae-group/ae_shell/develop?logo=python)](
     https://gitlab.com/ae-group/ae_shell)
 [![LatestPyPIrelease](
-    https://img.shields.io/gitlab/pipeline/ae-group/ae_shell/release0.3.13?logo=python)](
-    https://gitlab.com/ae-group/ae_shell/-/tree/release0.3.13)
+    https://img.shields.io/gitlab/pipeline/ae-group/ae_shell/release0.3.14?logo=python)](
+    https://gitlab.com/ae-group/ae_shell/-/tree/release0.3.14)
 [![PyPIVersions](https://img.shields.io/pypi/v/ae_shell)](
     https://pypi.org/project/ae-shell/#history)
 
