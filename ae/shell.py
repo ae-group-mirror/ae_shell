@@ -23,8 +23,9 @@ import os
 import shlex
 import subprocess
 
+from collections.abc import Callable, Iterable, Iterator, MutableMapping
 from contextlib import contextmanager
-from typing import Any, Callable, Iterable, Iterator, MutableMapping, Optional, Union, cast, overload
+from typing import Any, cast, overload
 
 from ae.base import UNSET, dummy_function, env_str, norm_name                               # type: ignore
 from ae.system import load_env_var_defaults                                                 # type: ignore
@@ -32,14 +33,14 @@ from ae.core import main_app_instance, AppBase                                  
 from ae.console import MAIN_SECTION_NAME, ConsoleApp                                        # type: ignore
 
 
-__version__ = '0.3.14'
+__version__ = '0.3.15'
 
 
 STDERR_BEG_MARKER = "vvv   STDERR   vvv"                #: :paramref:`ae.shell.sh_exec.lines_output` begin stderr lines
 STDERR_END_MARKER = "^^^   STDERR   ^^^"                #: end stderr lines in :paramref:`ae.shell.sh_exec.lines_output`
 
 
-def debug_or_verbose(app_obj: Optional[ConsoleApp] = None) -> bool:
+def debug_or_verbose(app_obj: ConsoleApp | None = None) -> bool:
     """ determine if the current app runs in debug|verbose mode, while preventing early .get_option() call an app init.
 
     :param app_obj:             optional ConsoleApp instance (def=main_app_instance()).
@@ -86,7 +87,7 @@ def get_domain_user_var(variable_name: str, domain: str = "", user: str = "") ->
     return value
 
 
-def hint(command: str, action: Union[Callable, str], message_suffix: str = "") -> str:
+def hint(command: str, action: Callable | str, message_suffix: str = "") -> str:
     """ return hint string in debug/verbose mode, to be appended onto a shell/console output.
 
     :param command:             shell command.
@@ -123,7 +124,7 @@ def mask_token(text: str) -> str: ...
 def mask_token(text: list[str]) -> list[str]: ...
 
 
-def mask_token(text: Union[str, list[str]]) -> Union[str, list[str]]:
+def mask_token(text: str | list[str]) -> str | list[str]:
     """ hide most parts of any Codeberg/GitHub/GitHub URL tokens found in the specified text/-lines.
 
     :param text:                text, specified either as str object or as a list of str objects (lines),
@@ -153,8 +154,8 @@ def mask_token(text: Union[str, list[str]]) -> Union[str, list[str]]:
 
 # pylint: disable-next=too-many-arguments,too-many-positional-arguments
 def sh_exec(command_line: str, extra_args: Iterable[str] = (), console_input: str = "",
-            lines_output: Optional[list[str]] = None, app_obj: Optional[AppBase] = None, shell: bool = False,
-            env_vars: Optional[dict[str, str]] = None) -> int:
+            lines_output: list[str] | None = None, app_obj: AppBase | None = None, shell: bool = False,
+            env_vars: dict[str, str] | None = None) -> int:
     """ execute command in the current working directory of the OS console/shell.
 
     :param command_line:        command line string to execute on the console/shell. could contain command line args
@@ -181,7 +182,7 @@ def sh_exec(command_line: str, extra_args: Iterable[str] = (), console_input: st
     debug_out = app_obj.dpo if app_obj else dummy_function if app_obj is UNSET else print
     debug_out(f"    . executing at {os.getcwd()}: {mask_token(args)}")
 
-    result: Union[subprocess.CompletedProcess, subprocess.CalledProcessError]   # having: stdout/stderr/returncode
+    result: subprocess.CompletedProcess | subprocess.CalledProcessError     # having: stdout/stderr/returncode
     try:
         result = subprocess.run(args,
                                 stdout=subprocess.PIPE if ret_out else None,
@@ -211,9 +212,9 @@ def sh_exec(command_line: str, extra_args: Iterable[str] = (), console_input: st
 
 # pylint: disable-next=too-many-arguments,too-many-positional-arguments
 def sh_exit_if_exec_err(err_code: int, command_line: str,
-                        extra_args: Iterable[str] = (), lines_output: Optional[list[str]] = None,
-                        exit_on_err: bool = True, exit_msg: str = "", app_obj: Optional[ConsoleApp] = None,
-                        shell: bool = False, env_vars: Optional[dict[str, str]] = None) -> int:
+                        extra_args: Iterable[str] = (), lines_output: list[str] | None = None,
+                        exit_on_err: bool = True, exit_msg: str = "", app_obj: ConsoleApp | None = None,
+                        shell: bool = False, env_vars: dict[str, str] | None = None) -> int:
     """ execute command in the current working directory of the OS console/shell, dump error, and exit app if needed.
 
     :param err_code:            error code to pass to the console as exit code if :paramref:`.exit_on_err` is True.
