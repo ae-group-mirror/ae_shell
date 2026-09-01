@@ -2,22 +2,20 @@
 shell execution and environment helpers
 =======================================
 
-.. hint::
-    this module is designed to provide a comprehensive set of constants and helper functions
-    for executing and managing external shell commands.
+this module is designed to provide a comprehensive set of constants and helper functions
+to manage shell printouts, OS environment variables and to execute shell commands.
 
 - :func:`debug_or_verbose`: checks if the application is running in debug or verbose mode.
 - :func:`get_domain_user_var`: retrieves an OS environment variable value for a specific domain and/or user.
-- :func:`hint`: provides a hint message based on the provided arguments.
-- :func:`in_os_env`: context manager to temporarily add environment variables from the dotenv files that not exist
-  in os.environ to it.
-- :func:`mask_token`: hide/mask tokens in a text block, to prevent to show them in logs or error messages.
-- :func:`sh_exec`: generic/fundamental function for all other shell execution helpers.
+- :func:`hint`: provides a hint message for console printouts based on the provided arguments.
+- :func:`in_os_env`: context manager to temporarily add environment variables from the ``.env`` files onto `os.environ`.
+- :func:`mask_token`: hide/mask tokens in a text block, to prevent to show them in logs and printouts.
+- :func:`sh_exec`: execute command in the current working directory of the OS console/shell.
 - :func:`sh_exit_if_exec_err`: extended version of :func:`sh_exec` with automatically checks for errors
   after a command is executed and handles application termination gracefully.
 
-- :data:`STDERR_BEG_MARKER`: marker used in the console output for the beginning of stderr output.
-- :data:`STDERR_END_MARKER`: marker used in the console output for the end of stderr output.
+- :data:`STDERR_BEG_MARKER`: marker used in the console output for the beginning of merged-in stderr output.
+- :data:`STDERR_END_MARKER`: marker used in the console output for the end of merged-in stderr output.
 """
 import os
 import shlex
@@ -28,16 +26,16 @@ from contextlib import contextmanager
 from typing import Any, cast, overload
 
 from ae.base import UNSET, dummy_function, env_str, norm_name                               # type: ignore
-from ae.system import load_env_var_defaults                                                 # type: ignore
+from ae.system import active_venv, load_env_var_defaults                                    # type: ignore
 from ae.core import main_app_instance, AppBase                                              # type: ignore
 from ae.console import MAIN_SECTION_NAME, ConsoleApp                                        # type: ignore
 
 
-__version__ = '0.3.15'
+__version__ = '0.3.16'
 
 
-STDERR_BEG_MARKER = "vvv   STDERR   vvv"                #: :paramref:`ae.shell.sh_exec.lines_output` begin stderr lines
-STDERR_END_MARKER = "^^^   STDERR   ^^^"                #: end stderr lines in :paramref:`ae.shell.sh_exec.lines_output`
+STDERR_BEG_MARKER = 'vvv   STDERR   vvv'  #: :paramref:`ae.shell.sh_exec.output_lines` begin stderr lines marker
+STDERR_END_MARKER = '^^^   STDERR   ^^^'  #: end stderr lines marker in :paramref:`ae.shell.sh_exec.output_lines`
 
 
 def debug_or_verbose(app_obj: ConsoleApp | None = None) -> bool:
@@ -45,7 +43,7 @@ def debug_or_verbose(app_obj: ConsoleApp | None = None) -> bool:
 
     :param app_obj:             optional ConsoleApp instance (def=main_app_instance()).
     :return:                    a boolean False when the main app debug level is :data:`~ae.core.DEBUG_LEVEL_DISABLED`
-                                and the app option 'more_verbose' is not specified (in cfg-file or at the command line),
+                                and the app option --more_verbose is not specified (in cfg-file or at the command line),
                                 else True.
 
     .. note:: the return value on app startup/initialization, before the command line parsing, is always True.
@@ -55,12 +53,12 @@ def debug_or_verbose(app_obj: ConsoleApp | None = None) -> bool:
         in a config file or via the command line options. the verbose mode get activated via the `more_verbose`  option.
     """
     app_obj = app_obj or main_app_instance()
-    # noinspection PyProtectedMember
     return bool(
-        not app_obj                                     # prevent exception in early app startup and in test runs
-        or app_obj.debug                                # main_app.debug_level > DEBUG_LEVEL_DISABLED
-        or not app_obj._parsed_arguments                # pylint: disable=protected-access
-        or app_obj.get_option('more_verbose'))          # optional app option
+        not app_obj                                         # prevent exception in early app startup and in test runs
+        or app_obj.debug                                    # main_app.debug_level > DEBUG_LEVEL_DISABLED
+        or not isinstance(app_obj, ConsoleApp)              # return True for pure ae.core.AppBase instances
+        or not getattr(app_obj, '_parsed_arguments', None)  # ConsoleApp._parsed_arguments args Namespace not created
+        or app_obj.get_option('more_verbose'))              # optional ConsoleApp instance verbose option
 
 
 def get_domain_user_var(variable_name: str, domain: str = "", user: str = "") -> Any:
@@ -154,104 +152,125 @@ def mask_token(text: str | list[str]) -> str | list[str]:
 
 # pylint: disable-next=too-many-arguments,too-many-positional-arguments
 def sh_exec(command_line: str, extra_args: Iterable[str] = (), console_input: str = "",
-            lines_output: list[str] | None = None, app_obj: AppBase | None = None, shell: bool = False,
-            env_vars: dict[str, str] | None = None) -> int:
+            output_lines: list[str] | None = None, app_obj: AppBase | None = None, shell: bool = False,
+            env_vars: dict[str, str] | None = None, err_redirect: int | None = None) -> int:
     """ execute command in the current working directory of the OS console/shell.
 
     :param command_line:        command line string to execute on the console/shell. could contain command line args
-                                separated by whitespace characters (alternatively use :paramref:`~sh_exec.extra_args`).
-    :param extra_args:          optional sequence of extra command line arguments.
+                                separated by whitespace characters (alternatively use :paramref:`.extra_args`).
+    :param extra_args:          optional iterable with extra command line arguments.
     :param console_input:       optional string to be sent to the stdin stream of the console/shell.
-    :param lines_output:        optional list to be extended with the lines printed to stdout/stderr on execution.
-                                by passing an empty list, the stdout and stderr streams/pipes will be separated,
-                                resulting in having the stderr output lines at the end of the list, enclosed by
-                                the list items :data:`STDERR_BEG_MARKER` and :data:`STDERR_END_MARKER`.
+    :param output_lines:        specify a list to be extended with the lines printed on the console/shell stdout stream,
+                                and to also hide this output on the console. if and how the stderr stream get also
+                                hidden/redirected to this list can be controlled via the value passed in the argument
+                                :paramref:`.err_redirect`.
     :param app_obj:             optional :class:`~ae.core.AppBase`/:class:`~ae.console.ConsoleApp` instance, used for
                                 logging. if not specified or None and if :func:`~ae.core.main_app_instance()` returns
                                 None then the Python :func:`print` function is used.
                                 specify :data:`~ae.base.UNSET` to suppress any printing/logging output.
-    :param shell:               pass True to execute command in the default OS shell (see :meth:`subprocess.run`).
+    :param shell:               pass True to execute command in the default OS shell (for more info check the
+                                documentation of the parameter :paramref:`~subprocess.run.shell` of the
+                                :meth:`subprocess.run` function).
     :param env_vars:            OS shell environment variables to be used instead of the console/bash defaults.
+    :param err_redirect:        this argument controls if and how the output of the executed command onto the console
+                                stderr stream gets captured/redirected. it gets passed directly onto the
+                                :paramref:`~subprocess.run.stderr` argument of :func:`subprocess.run` function.
+                                if the argument of :paramref:`.output_lines` is a list, and you specified the
+                                argument value :data:`subprocess.PIPE`, then the stderr output will get added at the
+                                end of this list (enclosed between the list items :data:`STDERR_BEG_MARKER` and
+                                :data:`STDERR_END_MARKER`). if the argument of :paramref:`.output_lines` is a
+                                list, and you specified the argument value :data:`subprocess.STDOUT` then the stderr
+                                output will get merged without any markers into this list in the order they get printed.
+                                specify :data:`subprocess.DEVNULL` to hide any stderr output onto the console/shell
+                                as well as in the :paramref:`.output_lines` list. if you specify `None`
+                                (the default argument) then the stderr output will be printed only on the console.
     :return:                    return code of the executed command or 126 if execution raised any other exception.
     """
-    args = command_line + " " + " ".join(extra_args) if shell else shlex.split(command_line) + list(extra_args)
-    ret_out = lines_output is not None  # == isinstance(lines_output, list)
-    merge_err = bool(lines_output)      # == -''- and len(lines_output) > 0
-    app_obj = app_obj or main_app_instance()
+    all_args = command_line + (" " + " ".join(extra_args) if extra_args else "") if shell else (
+            shlex.split(command_line) + list(extra_args))
+    # noinspection PyTypeChecker
+    masked_args = mask_token(all_args)
+    if app_obj is None:
+        app_obj = main_app_instance()
     print_out = app_obj.po if app_obj else dummy_function if app_obj is UNSET else print
     debug_out = app_obj.dpo if app_obj else dummy_function if app_obj is UNSET else print
-    debug_out(f"    . executing at {os.getcwd()}: {mask_token(args)}")
 
+    debug_out(f"    . executing {masked_args} at {os.getcwd()=} in {active_venv()=}")
     result: subprocess.CompletedProcess | subprocess.CalledProcessError     # having: stdout/stderr/returncode
     try:
-        result = subprocess.run(args,
-                                stdout=subprocess.PIPE if ret_out else None,
-                                stderr=subprocess.STDOUT if merge_err else subprocess.PIPE if ret_out else None,
+        result = subprocess.run(all_args,
+                                stdout=subprocess.PIPE if isinstance(output_lines, list) else None,
+                                stderr=err_redirect,
                                 input=console_input.encode(),
                                 check=True,
                                 shell=shell,
                                 env=env_vars)
-    except subprocess.CalledProcessError as ex:                     # pragma: no cover
-        debug_out(f"****  subprocess.run({mask_token(args)}) returned non-zero exit code {ex.returncode}; {ex=}")
-        result = ex
-    except Exception as ex:                                         # pylint: disable=broad-except  # pragma: no cover
-        print_out(f"****  subprocess.run({mask_token(args)}) raised exception {ex}")
-        return 126
+    except subprocess.CalledProcessError as exc:
+        debug_out(f"****  subprocess.run({masked_args}) returned non-zero exit code {exc.returncode}; {exc=}")
+        result = exc
+    except Exception as exc:                                         # pylint: disable=broad-except
+        print_out(f"****  subprocess.run({masked_args}) raised exception {exc}")
+        return (126, )[0]       # put return/exit code into tuple for global code search
 
-    if ret_out:
-        assert isinstance(lines_output, list), "silly mypy doesn't recognize ret_out"
+    if isinstance(output_lines, list):
         if result.stdout:
-            lines_output.extend([line for line in result.stdout.decode().splitlines() if line.strip()])
-        if not merge_err and result.stderr:
-            lines_output.append(STDERR_BEG_MARKER)
-            lines_output.extend([line for line in result.stderr.decode().splitlines() if line.strip()])
-            lines_output.append(STDERR_END_MARKER)
+            output_lines.extend([line for line in result.stdout.decode().splitlines() if line.strip()])
+        if err_redirect == subprocess.PIPE and result.stderr:
+            output_lines.append(STDERR_BEG_MARKER)
+            output_lines.extend([line for line in result.stderr.decode().splitlines() if line.strip()])
+            output_lines.append(STDERR_END_MARKER)
 
     return result.returncode
 
 
 # pylint: disable-next=too-many-arguments,too-many-positional-arguments
 def sh_exit_if_exec_err(err_code: int, command_line: str,
-                        extra_args: Iterable[str] = (), lines_output: list[str] | None = None,
-                        exit_on_err: bool = True, exit_msg: str = "", app_obj: ConsoleApp | None = None,
-                        shell: bool = False, env_vars: dict[str, str] | None = None) -> int:
-    """ execute command in the current working directory of the OS console/shell, dump error, and exit app if needed.
+                        extra_args: Iterable[str] = (), output_lines: list[str] | None = None, exit_on_err: bool = True,
+                        exit_msg: str = "", app_obj: ConsoleApp | None = None, shell: bool = False,
+                        env_vars: dict[str, str] | None = None, err_redirect: int | None = subprocess.DEVNULL) -> int:
+    """ execute command in the current working directory, optionally capturing console output and exit app on error.
 
-    :param err_code:            error code to pass to the console as exit code if :paramref:`.exit_on_err` is True.
-    :param command_line:        command line string to execute on the console/shell. could contain command line args
-                                separated by whitespace characters (alternatively use :paramref:`~sh_exec.extra_args`).
+    :param err_code:            error code to pass to the console as exit code if the command set an error code and
+                                value of the :paramref:`.exit_on_err` argument is `True`.
+    :param command_line:        command line string to execute. this argument could contain additional command line
+                                arguments, separated by whitespace characters. alternatively use the argument
+                                :paramref:`.extra_args` which allows to pass command line argument values,
+                                with containing space characters.
     :param extra_args:          optional iterable of extra command line arguments.
-    :param lines_output:        optional list to return the lines printed to stdout/stderr on execution.
-                                by passing an empty list, the stdout and stderr streams/pipes will be separated,
-                                resulting in having the stderr output lines at the end of the list. specify at
-                                least on list item to merge-in the stderr output (into the stdout output and return).
-    :param exit_on_err:         pass False to **not** exit the app on error (:paramref:`.exit_msg` has then to be
-                                empty).
+    :param output_lines:        optional list extended with the lines printed to stdout/stderr on execution.
+    :param exit_on_err:         pass False to not exit the app on error.
     :param exit_msg:            additional text to print on stdout/console if the app debug level is greater or equal
-                                to 1 or if an error occurred and :paramref:`~sh_exit_if_exec_err.exit_on_err` is True.
+                                to 1 (:data:`~ae.core.DEBUG_LEVEL_ENABLED`) or if an error occurred.
     :param app_obj:             :class:`~ae.console.ConsoleApp` instance, used for logging/force-ignorable error.
     :param shell:               pass True to execute command in the default OS shell (see :meth:`subprocess.run`).
     :param env_vars:            OS shell environment variables to be used instead of the console/bash defaults.
-    :return:                    0 on success or the error number if an error occurred.
+    :param err_redirect:        control how the output on stderr gets captured, redirected and returned. see also
+                                :paramref:`sh_exec.err_redirect` for more details to the supported argument values.
+                                if this argument is not specified or has the value :data:`subprocess.DEVNULL` then the
+                                stderr output will get suppressed on the console and will also not get added to the
+                                list argument in :paramref:`.output_lines`.
+    :return:                    0 on success, or if an error occurred the error number set by the executed command.
     """
-    assert exit_on_err or not exit_msg, "specified exit message will never be shown because exit_on_err is False"
-    if lines_output is None:
-        lines_output = []
+    if output_lines is None:
+        output_lines = []
+        output_len = 0
+    else:
+        output_len = len(output_lines)
     app_obj = app_obj or cast(ConsoleApp, main_app_instance())  # calls app_obj./ConsoleApp.chk() method
 
-    sh_err = sh_exec(command_line, extra_args=extra_args,
-                     lines_output=lines_output, app_obj=app_obj, shell=shell, env_vars=env_vars)
+    sh_err = sh_exec(command_line, extra_args=extra_args, output_lines=output_lines, app_obj=app_obj, shell=shell,
+                     env_vars=env_vars, err_redirect=err_redirect)
 
-    if app_obj and (sh_err and exit_on_err or app_obj.debug):
-        for line in lines_output:
+    if app_obj and (app_obj.debug or sh_err and exit_on_err):
+        for line in output_lines[output_len:]:
             if app_obj.verbose or not line.startswith("LOG:  "):  # if verbose show mypy's endless (stderr) log entries
                 app_obj.po(" " * 6 + line)
-        msg = f"command: {command_line} " + " ".join('"' + arg + '"' if " " in arg else arg for arg in extra_args)
-        if not sh_err:
-            app_obj.dpo(f"    = successfully executed {mask_token(msg)}")
+        command = mask_token(f"{command_line} " + " ".join('"' + _a + '"' if " " in _a else _a for _a in extra_args))
+        if sh_err == 0:
+            app_obj.dpo(f"    = successfully executed {command=}")
         else:
             if exit_msg:
                 app_obj.po(f"      {exit_msg}")
-            app_obj.chk(err_code, not exit_on_err, f"sh_exit_if_exec_err error {sh_err} in {mask_token(msg)}")  # quit
+            app_obj.chk(err_code, not exit_on_err, f"sh_exit_if_exec_err({err_code}, {command!r}) error {sh_err}")
 
     return sh_err

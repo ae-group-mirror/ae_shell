@@ -1,11 +1,19 @@
 """ ae.shell unit tests """
+import os
+import shlex
+import sys
+import subprocess
 from unittest.mock import PropertyMock, patch
 
-from ae.base import camel_to_snake, os_path_join, write_file
+from ae.base import UNSET, camel_to_snake, norm_name, os_path_join, write_file
+from ae.system import load_env_var_defaults, active_venv
 from ae.core import DEBUG_LEVEL_DISABLED, DEBUG_LEVEL_ENABLED, DEBUG_LEVEL_VERBOSE
+from ae.console import MAIN_SECTION_NAME, ConsoleApp
 
 
-from ae.shell import *
+from ae.shell import (
+    STDERR_BEG_MARKER, STDERR_END_MARKER,
+    debug_or_verbose, get_domain_user_var, hint, in_os_env, mask_token, sh_exec, sh_exit_if_exec_err)
 
 
 class TestHelpers:
@@ -173,6 +181,7 @@ class TestHelpers:
             assert os.environ.get(exi_var, "") == exi_val
             assert len(loaded) == 1
             assert loaded[new_var] == new_val
+            # noinspection PyTypeChecker
             assert os.environ == os_env | loaded    # | since Python 3.9 (or {**os_env, **loaded} since 3.5+)
         assert new_var not in os.environ
         assert os.environ.get(exi_var, "") == exi_val
@@ -203,6 +212,7 @@ class TestHelpers:
             assert len(loaded) == 2
             assert loaded[var1] == val1
             assert loaded[var2] == val2
+            # noinspection PyTypeChecker
             assert os.environ == os_env | loaded
         assert var1 not in os.environ
         assert var2 not in os.environ
@@ -246,117 +256,309 @@ STDOUT_LINE = b'std___out'
 STDERR_LINE = b'std___err'
 
 
-def subprocess_run_return(*_args, **_kwargs):
-    """ mock to simulate subprocess.run return object. """
-    class _Return:
-        returncode = RETURN_CODE
-        stdout = STDOUT_LINE
-        stderr = STDERR_LINE
-    return _Return()
+class TestShellExecutions:
+    def test_sh_exec_catch_any_exception(self, capsys):
+        with patch("subprocess.run", side_effect=Exception('broad tst exception')):
+            assert sh_exec('any_cmd') == (126, )[0]
 
+        output = capsys.readouterr().out
+        assert 'any_cmd' in output
+        assert " raised exception " in output
+        assert 'broad tst exception' in output
 
-class TestShellExecuteAndLogging:
+    def test_sh_exec_catch_exit_code_exception(self, capsys):
+        assert sh_exec("exit 69", shell=True) == 69
+
+        output = capsys.readouterr().out
+        assert " returned non-zero exit code " in output
+
+        assert sh_exec(sys.executable, extra_args=["-c", "import sys; sys.exit(96)"]) == 96
+
+        output = capsys.readouterr().out
+        assert " returned non-zero exit code 96" in output
+
+    def test_sh_exec_console_output(self, capsys, cons_app):
+        sh_exec('any command')
+
+        out, err = capsys.readouterr()
+        assert "    . executing ['any', 'command']" in out
+        assert os.getcwd() in out
+        assert active_venv() in out
+        assert "****  subprocess.run(['any', 'command']) raised exception" in out
+        assert err == ""
+
+        with patch('ae.console.ConsoleApp.debug_level', new_callable=PropertyMock, return_value=DEBUG_LEVEL_DISABLED):
+            sh_exec('any command')
+
+        out, err = capsys.readouterr()
+        assert "    . executing" not in out
+        assert "****  subprocess.run(['any', 'command']) raised exception" in out
+        assert err == ""
+
+        with patch('ae.console.ConsoleApp.debug_level', new_callable=PropertyMock, return_value=DEBUG_LEVEL_DISABLED):
+            sh_exec('any command', app_obj=cons_app)    # strange: patch('ae.core.AppBase.debug_level') does not work
+
+        out, err = capsys.readouterr()
+        assert "    . executing" not in out
+        assert "****  subprocess.run(['any', 'command']) raised exception" in out
+        assert err == ""
+
+        sh_exec('any command', app_obj=UNSET)
+
+        out, err = capsys.readouterr()
+        assert out == ""
+        assert err == ""
+
+    def test_sh_exec_console_output_shell(self, capsys):
+        ret = sh_exec("echo hello world", shell=True)
+
+        out, err = capsys.readouterr()
+        assert ret == 0
+        assert "    . executing echo hello world at " in out
+        assert out.count("hello world") == 1   # strange: capsys does not get the echo command output w/ shell=True arg
+        assert err == ""
+
+        ret = sh_exec("echo hello world", app_obj=UNSET, shell=True)
+
+        out, err = capsys.readouterr()
+        assert ret == 0
+        assert out == ""
+        assert err == ""
+
     @patch.object(subprocess, 'run', autospec=True)
-    def test_sh_exec_args(self, mock_method):
+    def test_sh_exec_run_args(self, mock_method):
         cmd_line = "cmd arg1 arg2"
         extra_args = ['extra_arg1', 'extra_arg2']
 
-        sh_exec(cmd_line, extra_args)
+        sh_exec(cmd_line, tuple(extra_args))
+
         mock_method.assert_called_with(
-            cmd_line.split(" ") + extra_args, stdout=None, stderr=None, input=b'', check=True, shell=False, env=None)
+            shlex.split(cmd_line) + extra_args, stdout=None, stderr=None, input=b'', check=True, shell=False, env=None)
+
+        sh_exec(cmd_line, shell=True)
+
+        mock_method.assert_called_with(
+            cmd_line, stdout=None, stderr=None, input=b'', check=True, shell=True, env=None)
+
+        sh_exec(cmd_line, {_: "any" for _ in extra_args}, shell=True, err_redirect=subprocess.DEVNULL)
+
+        mock_method.assert_called_with(
+            cmd_line + " " + " ".join(extra_args), stdout=None, stderr=subprocess.DEVNULL, input=b'', check=True,
+            shell=True, env=None)
 
         sh_exec(cmd_line, extra_args, console_input='con_inp')
+
         mock_method.assert_called_with(
-            cmd_line.split(" ") + extra_args, stdout=None, stderr=None, input=b'con_inp',
+            shlex.split(cmd_line) + extra_args, stdout=None, stderr=None, input=b'con_inp',
             check=True, shell=False, env=None)
 
-        sh_exec(cmd_line, extra_args, lines_output=[])
+        sh_exec(cmd_line, extra_args, output_lines=[])
+
         mock_method.assert_called_with(
-            cmd_line.split(" ") + extra_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=b'',
+            shlex.split(cmd_line) + extra_args, stdout=subprocess.PIPE, stderr=None, input=b'',
             check=True, shell=False, env=None)
 
-        sh_exec(cmd_line, extra_args, console_input='con_inp', lines_output=[])
+        sh_exec(cmd_line, extra_args, console_input='con_inp', output_lines=[], err_redirect=subprocess.STDOUT)
+
         mock_method.assert_called_with(
-            cmd_line.split(" ") + extra_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=b'con_inp',
+            shlex.split(cmd_line) + extra_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=b'con_inp',
             check=True, shell=False, env=None)
 
         env_vars = {'A': "1", 'C': "tst_string value"}
+
         sh_exec(cmd_line, extra_args, env_vars=env_vars)
+
         mock_method.assert_called_with(
-            cmd_line.split(" ") + extra_args, stdout=None, stderr=None, input=b'',
+            shlex.split(cmd_line) + extra_args, stdout=None, stderr=None, input=b'',
             check=True, shell=False, env=env_vars)
 
-    def test_sh_exit_if_git_err_with_trace(self, cons_app):
-        output = []
-        with patch('ae.console.ConsoleApp.verbose', new_callable=PropertyMock, return_value=True):
-            _err = sh_exit_if_exec_err(0, "git", extra_args=("--version",), lines_output=output, exit_on_err=False)
-
-        assert output       # e.g. == ['git version 2.43.0']
-        assert len(output) == 1
-        assert isinstance(output[0], str)
-
-        # with explicit app_obj kwarg
-        output = []
-        with patch('ae.console.ConsoleApp.verbose', new_callable=PropertyMock, return_value=True):
-            _err = sh_exit_if_exec_err(0, "git", extra_args=("--version",), lines_output=output, exit_on_err=False,
-                                       app_obj=cons_app)
-
-        assert output       # e.g. == ['git version 2.43.0']
-        assert len(output) == 1
-        assert isinstance(output[0], str)
-
-    @patch.object(subprocess, 'run', new=subprocess_run_return)
     def test_sh_exec_run_returned_values(self):
-        cmd_line = "cmd arg1 arg2"
-        extra_args = ['extra_arg1', 'extra_arg2']
-        lines_output = []
+        def _run_return(*_args, **_kwargs):
+            """ mock to simulate subprocess.run return object. """
+            class _Return:
+                returncode = RETURN_CODE
+                stdout = STDOUT_LINE
+                stderr = STDERR_LINE
+            return _Return()
 
-        assert sh_exec(cmd_line, extra_args, lines_output=lines_output) == RETURN_CODE
-        assert STDOUT_LINE.decode() in lines_output
-        assert STDERR_LINE.decode() in lines_output
-        assert sum("STDERR" in _ for _ in lines_output) == 2
+        with patch('ae.shell.subprocess.run', new=_run_return):  # @patch.object(subprocess, 'run', new=_run_return)
+            output_lines = []
 
-    @patch.object(subprocess, 'run', new_callable=subprocess_run_return)
-    def test_sh_exec_run_exception(self, _return_obj):
-        cmd_line = "cmd arg1 arg2"
-        extra_args = ['extra_arg1', 'extra_arg2']
-        lines_output = []
-        assert sh_exec(cmd_line, extra_args, lines_output=lines_output) == 126     # _Return() is not callable exc
+            assert sh_exec("cmd_line", output_lines=output_lines, err_redirect=subprocess.PIPE) == RETURN_CODE
 
-    def test_sh_exit_if_exec_err(self, capsys, cons_app, patched_shutdown_wrapper):
-        sh_exit_if_exec_err(693, 'tst_command_line', exit_on_err=False)
+            assert output_lines[0] == STDOUT_LINE.decode()
+            assert output_lines[1] == STDERR_BEG_MARKER
+            assert output_lines[2] == STDERR_LINE.decode()
+            assert output_lines[3] == STDERR_END_MARKER
+
+            output_lines = []
+
+            assert sh_exec("cmd_line", output_lines=output_lines) == RETURN_CODE
+
+            assert len(output_lines) == 1
+            assert output_lines[0] == STDOUT_LINE.decode()
+            assert STDERR_LINE.decode() not in output_lines
+            assert STDERR_BEG_MARKER not in output_lines
+            assert STDERR_END_MARKER not in output_lines
+
+            output_lines = ['first line', 'second line']
+
+            assert sh_exec("cmd_line", output_lines=output_lines, err_redirect=subprocess.STDOUT) == RETURN_CODE
+
+            assert len(output_lines) == 3
+            assert output_lines[0] == 'first line'
+            assert output_lines[1] == 'second line'
+            assert output_lines[2] == STDOUT_LINE.decode()
+            assert STDERR_LINE.decode() not in output_lines
+            assert STDERR_BEG_MARKER not in output_lines
+            assert STDERR_END_MARKER not in output_lines
+
+    def test_sh_exec_stderr_redirection(self, capfd, cons_app):  # pytest/capsys replaces sys.stdout/.stderr
+        args = {'command_line': sys.executable,
+                'extra_args': ["-c", "import sys; print('tst_std_err', file=sys.stderr); print('tst_std_out')"]}
+
+        assert sh_exec(**args) == 0
+
+        out, err = capfd.readouterr()
+        assert out.count('tst_std_out') == 2
+        assert out.endswith("\n" + 'tst_std_out' + "\n")
+        assert err == 'tst_std_err' + "\n"
+
+        redirected = []
+
+        assert sh_exec(**args, output_lines=redirected) == 0
+
+        out, err = capfd.readouterr()
+        assert out.count('tst_std_out') == 1
+        assert not out.endswith("\n" + 'tst_std_out' + "\n")
+        assert err == 'tst_std_err' + "\n"
+        assert redirected == ['tst_std_out']
+
+        redirected = []
+
+        assert sh_exec(**args, output_lines=redirected, err_redirect=subprocess.DEVNULL) == 0
+
+        out, err = capfd.readouterr()
+        assert err == ''
+        assert redirected == ['tst_std_out']
+
+        redirected = []
+
+        assert sh_exec(**args, output_lines=redirected, err_redirect=subprocess.PIPE) == 0
+
+        out, err = capfd.readouterr()
+        assert err == ''
+        assert redirected == ['tst_std_out', STDERR_BEG_MARKER, 'tst_std_err', STDERR_END_MARKER]
+
+        redirected = []
+
+        assert sh_exec(**args, output_lines=redirected, err_redirect=subprocess.STDOUT) == 0
+
+        out, err = capfd.readouterr()
+        assert err == ''
+        assert redirected == ['tst_std_err', 'tst_std_out']
+
+    def test_sh_exit_if_exec_err_any_command(self, capsys, cons_app):
+        output = ['old output']
+
+        with patch('ae.console.ConsoleApp.debug', new_callable=PropertyMock, return_value=True):  # with app_obj kwarg
+            ret = sh_exit_if_exec_err(0, 'git --version', output_lines=output,
+                                      exit_on_err=False, exit_msg='tst exit message', app_obj=cons_app)
+
+        assert ret == 0
+        assert len(output) >= 2
+        assert output[0] == 'old output'
+        assert isinstance(output[1], str)   # e.g. == 'git version 2.55.0'
         out, err = capsys.readouterr()
-        assert 'tst_command_line' in out
+        assert 'old output' not in out
+        assert 'git --version' in out
+        assert 'tst exit message' not in out
         assert err == ""
 
+    def test_sh_exit_if_exec_err_any_invalid_command(self, capsys, cons_app, patched_shutdown_wrapper):
+        ret = sh_exit_if_exec_err(693, 'tst_command_line', exit_on_err=False, exit_msg='tst exit message')
+
+        assert ret == (126, )[0]
+        out, err = capsys.readouterr()
+        assert out.count('tst_command_line') == 3
+        assert 'tst exit message' in out
+        assert err == ""
+
+    def test_sh_exit_if_exec_err_caught_shutdown_exception(self, capsys, cons_app, patched_shutdown_wrapper):
         ret = patched_shutdown_wrapper(sh_exit_if_exec_err, 693, 'tst_command_line', exit_msg='tst exit message')
 
         assert len(ret) == 1
         assert ret[0]['exit_code'] == 693    # 1st arg == error code
         assert 'tst_command_line' in ret[0]['error_message']
+        assert 'sh_exit_if_exec_err(' in ret[0]['error_message']
+        assert "(693, " in ret[0]['error_message']
         out, err = capsys.readouterr()
-        assert 'tst_command_line' in out
+        assert out.count('tst_command_line') == 3
         assert 'tst exit message' in out
         assert err == ""
 
+    def test_sh_exit_if_exec_err_exception(self, capsys, cons_app):
+        output = ['old output']
+
+        ret = sh_exit_if_exec_err(693, "", output_lines=output, exit_on_err=False, exit_msg='tst exit message')
+
+        assert ret == (126, )[0]
+        assert output == ['old output']
+        out, err = capsys.readouterr()
+        assert f". executing [] at os.getcwd()='{os.getcwd()}' in active_venv()='{active_venv()}'" in out
+        assert 'tst exit message' in out
+        assert err == ""
+
+    def test_sh_exit_if_exec_err_with_app(self, capsys, cons_app):
         output = []
-        sh_exit_if_exec_err(693, "", lines_output=output, exit_on_err=False)
-        assert not output
 
-    @patch.object(subprocess, 'run', new=subprocess_run_return)
-    def test_sh_exec_run_returned_values(self):
-        cmd_line = "cmd arg1 arg2"
-        extra_args = ['extra_arg1', 'extra_arg2']
-        lines_output = []
+        with patch('ae.console.ConsoleApp.debug', new_callable=PropertyMock, return_value=False):
+            ret = sh_exit_if_exec_err(0, "_err", output_lines=output, exit_on_err=False, err_redirect=subprocess.STDOUT)
 
-        assert sh_exec(cmd_line, extra_args, lines_output=lines_output) == RETURN_CODE
-        assert STDOUT_LINE.decode() in lines_output
-        assert STDERR_LINE.decode() in lines_output
-        assert sum("STDERR" in _ for _ in lines_output) == 2
+        assert ret == (126, )[0]
+        assert output == []
+        out, err = capsys.readouterr()
+        assert out.count('_err') == 3
+        assert err == ""
 
-    @patch.object(subprocess, 'run', new_callable=subprocess_run_return)
-    def test_sh_exec_run_exception(self, _return_obj):
-        cmd_line = "cmd arg1 arg2"
-        extra_args = ['extra_arg1', 'extra_arg2']
-        lines_output = []
-        assert sh_exec(cmd_line, extra_args, lines_output=lines_output) == 126     # _Return() is not callable exc
+    def test_sh_exit_if_exec_err_with_app_kwarg_and_exit_msg(self, capsys, cons_app):
+        output = []
+
+        with patch('ae.console.ConsoleApp.debug', new_callable=PropertyMock, return_value=True):  # with app_obj kwarg
+            ret = sh_exit_if_exec_err(0, 'error-command', output_lines=output,
+                                      exit_on_err=False, exit_msg='tst exit message', app_obj=cons_app)
+
+        assert ret == (126, )[0]
+        assert output == []
+        out, err = capsys.readouterr()
+        assert out.count('error-command') == 3
+        assert 'tst exit message' in out
+        assert err == ""
+
+    def test_sh_exit_if_exec_err_with_app_extending_output(self, capsys, cons_app):
+        output = ['any old line output']
+
+        with (patch('ae.shell.sh_exec', new=lambda *_, **kwargs: kwargs['output_lines'].append('new out line') or 0),
+              patch('ae.console.ConsoleApp.debug', new_callable=PropertyMock, return_value=True)):
+            ret = sh_exit_if_exec_err(369, "any_cmd", output_lines=output)  # extended output_lines and ret==0
+
+        assert ret == 0
+        assert output == ['any old line output', 'new out line']
+        out, err = capsys.readouterr()
+        assert 'any old line output' not in out
+        assert 'new out line' in out
+        assert '    = successfully executed command' in out
+        assert out.count('any_cmd') == 1
+        assert err == ""
+
+    def test_sh_exit_if_exec_err_without_app(self, capsys):
+        output = []
+
+        ret = sh_exit_if_exec_err(0, "_err_cmd", output_lines=output, exit_on_err=False, exit_msg='tst exit message')
+
+        assert ret == (126, )[0]
+        assert output == []
+        out, err = capsys.readouterr()
+        assert out.count('_err_cmd') == 3
+        assert 'tst exit message' not in out
+        assert err == ""
