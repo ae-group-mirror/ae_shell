@@ -6,14 +6,15 @@ import subprocess
 from unittest.mock import PropertyMock, patch
 
 from ae.base import UNSET, camel_to_snake, norm_name, os_path_join, write_file
-from ae.system import load_env_var_defaults, active_venv
+from ae.system import load_env_var_defaults, os_env_venv
 from ae.core import DEBUG_LEVEL_DISABLED, DEBUG_LEVEL_ENABLED, DEBUG_LEVEL_VERBOSE
 from ae.console import MAIN_SECTION_NAME, ConsoleApp
 
 
 from ae.shell import (
     STDERR_BEG_MARKER, STDERR_END_MARKER,
-    debug_or_verbose, get_domain_user_var, hint, in_os_env, mask_token, sh_exec, sh_exit_if_exec_err)
+    debug_or_verbose, get_domain_user_var, hint, in_os_env, mask_token,
+    output_line_split, output_zero_split, sh_exec, sh_exit_if_exec_err)
 
 
 class TestHelpers:
@@ -257,6 +258,30 @@ STDERR_LINE = b'std___err'
 
 
 class TestShellExecutions:
+    def test_output_line_split(self):
+        assert output_line_split(STDOUT_LINE) == [STDOUT_LINE.decode()]
+
+        assert output_line_split(STDOUT_LINE + b"\n" + STDERR_LINE + b"\n") == [STDOUT_LINE.decode(),
+                                                                                STDERR_LINE.decode()]
+
+        assert output_line_split(STDOUT_LINE + b"\n\0" + STDERR_LINE + b"\0") == [
+            STDOUT_LINE.decode(), "\0" + STDERR_LINE.decode() + "\0"]
+
+        assert output_line_split(STDOUT_LINE + b"\r" + STDERR_LINE + b"\r\n\r\0\r") == [
+            STDOUT_LINE.decode(), STDERR_LINE.decode(), "\0"]
+
+    def test_output_zero_split(self):
+        assert output_zero_split(STDOUT_LINE) == [STDOUT_LINE.decode()]
+
+        assert output_zero_split(STDOUT_LINE + b"\0" + STDERR_LINE + b"\0") == [STDOUT_LINE.decode(),
+                                                                                STDERR_LINE.decode()]
+
+        assert output_zero_split(STDOUT_LINE + b"\0" + STDERR_LINE + b" = multi\nval\rlines\r\n" + STDERR_LINE) == [
+            STDOUT_LINE.decode(), STDERR_LINE.decode() + " = multi\nval\rlines\r\n" + STDERR_LINE.decode()]
+
+        assert output_zero_split(STDOUT_LINE + b"\n" + STDERR_LINE + b"\r\n\r\0\r") == [
+            STDOUT_LINE.decode() + "\n" + STDERR_LINE.decode() + "\r\n\r"]
+
     def test_sh_exec_catch_any_exception(self, capsys):
         with patch("subprocess.run", side_effect=Exception('broad tst exception')):
             assert sh_exec('any_cmd') == (126, )[0]
@@ -283,7 +308,7 @@ class TestShellExecutions:
         out, err = capsys.readouterr()
         assert "    . executing ['any', 'command']" in out
         assert os.getcwd() in out
-        assert active_venv() in out
+        assert os_env_venv() in out
         assert "****  subprocess.run(['any', 'command']) raised exception" in out
         assert err == ""
 
@@ -329,40 +354,41 @@ class TestShellExecutions:
     def test_sh_exec_run_args(self, mock_method):
         cmd_line = "cmd arg1 arg2"
         extra_args = ['extra_arg1', 'extra_arg2']
+        env = os.environ.copy()
 
         sh_exec(cmd_line, tuple(extra_args))
 
         mock_method.assert_called_with(
-            shlex.split(cmd_line) + extra_args, stdout=None, stderr=None, input=b'', check=True, shell=False, env=None)
+            shlex.split(cmd_line) + extra_args, stdout=None, stderr=None, input=b'', check=True, shell=False, env=env)
 
         sh_exec(cmd_line, shell=True)
 
         mock_method.assert_called_with(
-            cmd_line, stdout=None, stderr=None, input=b'', check=True, shell=True, env=None)
+            cmd_line, stdout=None, stderr=None, input=b'', check=True, shell=True, env=env)
 
         sh_exec(cmd_line, {_: "any" for _ in extra_args}, shell=True, err_redirect=subprocess.DEVNULL)
 
         mock_method.assert_called_with(
             cmd_line + " " + " ".join(extra_args), stdout=None, stderr=subprocess.DEVNULL, input=b'', check=True,
-            shell=True, env=None)
+            shell=True, env=env)
 
         sh_exec(cmd_line, extra_args, console_input='con_inp')
 
         mock_method.assert_called_with(
             shlex.split(cmd_line) + extra_args, stdout=None, stderr=None, input=b'con_inp',
-            check=True, shell=False, env=None)
+            check=True, shell=False, env=env)
 
         sh_exec(cmd_line, extra_args, output_lines=[])
 
         mock_method.assert_called_with(
             shlex.split(cmd_line) + extra_args, stdout=subprocess.PIPE, stderr=None, input=b'',
-            check=True, shell=False, env=None)
+            check=True, shell=False, env=env)
 
         sh_exec(cmd_line, extra_args, console_input='con_inp', output_lines=[], err_redirect=subprocess.STDOUT)
 
         mock_method.assert_called_with(
             shlex.split(cmd_line) + extra_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, input=b'con_inp',
-            check=True, shell=False, env=None)
+            check=True, shell=False, env=env)
 
         env_vars = {'A': "1", 'C': "tst_string value"}
 
@@ -371,6 +397,12 @@ class TestShellExecutions:
         mock_method.assert_called_with(
             shlex.split(cmd_line) + extra_args, stdout=None, stderr=None, input=b'',
             check=True, shell=False, env=env_vars)
+
+        sh_exec(cmd_line, extra_args, env_vars=None)
+
+        mock_method.assert_called_with(
+            shlex.split(cmd_line) + extra_args, stdout=None, stderr=None, input=b'',
+            check=True, shell=False, env=None)
 
     def test_sh_exec_run_returned_values(self):
         def _run_return(*_args, **_kwargs):
@@ -505,7 +537,7 @@ class TestShellExecutions:
         assert ret == (126, )[0]
         assert output == ['old output']
         out, err = capsys.readouterr()
-        assert f". executing [] at os.getcwd()='{os.getcwd()}' in active_venv()='{active_venv()}'" in out
+        assert f". executing [] at os.getcwd()='{os.getcwd()}' in os_env_venv()='{os_env_venv()}'" in out
         assert 'tst exit message' in out
         assert err == ""
 
