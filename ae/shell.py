@@ -12,20 +12,19 @@ to manage shell printouts, OS environment variables and to execute shell command
 * :func:`mask_token`: hide/mask tokens in a text block, to prevent to show them in logs and printouts.
 * :func:`output_line_split`: decode and split the specified shell/console output streams into line chunks.
 * :func:`output_zero_split`: decode and split the specified shell/console output streams separated by `NUL` (\\0) chars.
-* :func:`sh_exec`: execute command in the current working directory of the OS console/shell.
-* :func:`sh_exit_if_exec_err`: extended version of :func:`sh_exec` with automatically checks for errors
+* :func:`run_cmd`: execute command in the current working directory of the OS console/shell.
+* :func:`run_logged_cmd`: extended version of :func:`run_cmd` with logging and error checking.
   after a command is executed and handles application shutdown/termination gracefully.
 
-* :data:`STDERR_BEG_MARKER`: marker used in the console/shell printouts for the beginning of merged-in stderr output.
-* :data:`STDERR_END_MARKER`: marker used in the console/shell printouts for the end of merged-in stderr output.
+* :data:`STDERR_BEG_MARKER`: marker used in the console/shell printouts for the beginning of merged-in `stderr` output.
+* :data:`STDERR_END_MARKER`: marker used in the console/shell printouts for the end of merged-in `stderr` output.
 """
 import os
-import shlex
 import subprocess
 
-from collections.abc import Callable, Iterable, Iterator, MutableMapping
+from collections.abc import Callable, Iterator, MutableMapping
 from contextlib import contextmanager
-from typing import Any, cast, overload
+from typing import Any, Sequence, cast, overload
 
 from ae.base import UNSET, UnsetType, dummy_function, env_str, norm_name                    # type: ignore
 from ae.system import load_env_var_defaults, os_env_venv                                    # type: ignore
@@ -33,11 +32,11 @@ from ae.core import main_app_instance, AppBase                                  
 from ae.console import MAIN_SECTION_NAME, ConsoleApp                                        # type: ignore
 
 
-__version__ = '0.3.17'
+__version__ = '0.3.18'
 
 
-STDERR_BEG_MARKER = 'vvv   STDERR   vvv'  #: :paramref:`ae.shell.sh_exec.output_lines` begin stderr lines marker
-STDERR_END_MARKER = '^^^   STDERR   ^^^'  #: end stderr lines marker in :paramref:`ae.shell.sh_exec.output_lines`
+STDERR_BEG_MARKER = 'vvv   STDERR   vvv'  #: :paramref:`ae.shell.run_cmd.output_lines` begin `stderr` lines marker
+STDERR_END_MARKER = '^^^   STDERR   ^^^'  #: end `stderr` lines marker in :paramref:`ae.shell.run_cmd.output_lines`
 
 
 def debug_or_verbose(app_obj: ConsoleApp | UnsetType | None = None) -> bool:
@@ -119,18 +118,14 @@ def in_os_env(start_dir: str = "") -> Iterator[MutableMapping[str, str]]:
 
 
 @overload
-def mask_token(text: str) -> str: ...
+def mask_token(text: str) -> str: ...       # type: ignore[overload-overlap]
 
 
 @overload
-def mask_token(text: list[str]) -> list[str]: ...
+def mask_token(text: Sequence[str]) -> list[str]: ...
 
 
-@overload
-def mask_token(text: str | list[str]) -> str | list[str]: ...
-
-
-def mask_token(text: str | list[str]) -> str | list[str]:
+def mask_token(text: str | Sequence[str]) -> str | list[str]:
     """ hide most parts of any Codeberg/GitHub/GitHub URL tokens found in the specified text/-lines.
 
     :param text:                text, specified either as str object or as a list of str objects (lines),
@@ -161,7 +156,7 @@ def mask_token(text: str | list[str]) -> str | list[str]:
 def output_line_split(output: bytes) -> list[str]:
     """ decode and split the specified shell/console output streams into line chunks.
 
-    :param output:              captured stdout/stderr output from an executed OS shell command.
+    :param output:              captured `stdout`/`stderr` output from an executed OS shell command.
     :return:                    list of non-empty shell/console output lines, decoded into string.
     """
     return [line for line in output.decode().splitlines() if line.strip()]
@@ -170,83 +165,84 @@ def output_line_split(output: bytes) -> list[str]:
 def output_zero_split(output: bytes) -> list[str]:
     """ decode and split the specified shell/console output streams separated by `NUL` (\\0) characters.
 
-    :param output:              captured stdout/stderr output from an executed OS shell command (e.g. `env -0`).
+    :param output:              captured `stdout`/`stderr` output from an executed OS shell command (e.g. `env -0`).
     :return:                    list of non-empty shell/console output chunks, decoded into string.
     """
     return [line for line in output.decode().split('\0') if line.strip()]
 
 
-# pylint: disable-next=too-many-arguments,too-many-positional-arguments
-def sh_exec(command_line: str, extra_args: Iterable[str] = (), console_input: str = "",
-            output_lines: list[str] | None = None, app_obj: AppBase | UnsetType | None = None, shell: bool = False,
-            env_vars: dict[str, str] | UnsetType | None = UNSET, err_redirect: int | None = None,
-            decoder_splitter: Callable[[bytes], list[str]] = output_line_split) -> int:
-    """ execute command in the current working directory of the OS console/shell.
+def run_cmd(*cmd_args: str,
+            output_lines: list[str] | None = None,
+            app_obj: AppBase | UnsetType | None = None,
+            decoder_splitter: Callable[[bytes], list[str]] = output_line_split,
+            **run_kwargs) -> int:
+    """ run command in the current working directory, capturing/logging errors and optionally returning console output.
 
-    :param command_line:        command line string to execute on the console/shell. could contain command line args
-                                separated by whitespace characters (alternatively use :paramref:`.extra_args`).
-    :param extra_args:          optional iterable with extra command line arguments.
-    :param console_input:       optional string to be sent to the stdin stream of the console/shell.
-    :param output_lines:        specify a list to be extended with the lines printed on the console/shell stdout stream,
-                                and to also hide this output on the console. if and how the stderr stream get also
-                                hidden/redirected to this list can be controlled via the value passed in the argument
-                                :paramref:`.err_redirect`.
+    :param cmd_args:            command line string or args sequence of command name and arguments
+                                to be run/executed on the console/shell via :func:`subprocess.run`.
+    :param output_lines:        specify a list to be extended with the lines printed on the console/shell `stdout`
+                                stream, and to also hide this output on the console. if and how the `stderr` stream get
+                                also either hidden, captured or to be redirected to this list can be controlled via the
+                                value passed in the kwarg :paramref:`~subprocess.Popen.stderr`: if this argument is a
+                                list, and you specified the argument value :data:`subprocess.PIPE`, then the `stderr`
+                                output will get added at the end of this list (enclosed between the list items
+                                :data:`STDERR_BEG_MARKER` and :data:`STDERR_END_MARKER`). if this argument is a list,
+                                and you specified the argument value :data:`subprocess.STDOUT` then the `stderr` outputs
+                                will get merged without any markers into this list in the order they get printed.
+                                specify :data:`subprocess.DEVNULL` in :paramref:`~subprocess.Popen.stderr` to hide any
+                                `stderr` output onto the console/shell as well as in this list argument.
+                                specifying `None` as :paramref:`~subprocess.Popen.stderr` argument value
+                                (the default argument) then the `stderr` output will be printed only on the console.
     :param app_obj:             optional :class:`~ae.core.AppBase`/:class:`~ae.console.ConsoleApp` instance, used for
                                 logging. if not specified or None and if :func:`~ae.core.main_app_instance()` returns
                                 None then the Python :func:`print` function is used.
                                 specify :data:`~ae.base.UNSET` to suppress any printing/logging output.
-    :param shell:               pass True to execute command in the default OS shell (for more info check the
-                                documentation of the parameter :paramref:`~subprocess.run.shell` of the
-                                :func:`subprocess.run` function).
-    :param env_vars:            OS shell environment variables to be used instead of the console/bash defaults.
-                                if not specified or `UNSET` then an isolated dict copy of :attr:`os.environ` will get
-                                passed onto :func:`subprocess.run` in order to avoid potential runtime errors, if the
-                                parent process (or a concurrent thread) modifies :attr:`os.environ` during the creation
-                                of the subprocess. Additionally, with the convertion of the special :class:`_Environ`
-                                object into a standard dict, the execution will result slightly faster and avoids
-                                any special method overrides interfering with the child process creation. it also is
-                                preventing rare errors with multithread-processes that try to change OS env variable
-                                (e.g. Conda in relation with pip could lead to raise a `RuntimeError: dictionary
-                                changed size during iteration` exception).
-                                specify `None` in order to use the original/unisolated :attr:`os.environ` object.
-    :param err_redirect:        this argument controls if and how the output of the executed command onto the console
-                                stderr stream gets captured/redirected. it gets passed directly onto the
-                                :paramref:`~subprocess.run.stderr` argument of :func:`subprocess.run` function.
-                                if the argument of :paramref:`.output_lines` is a list, and you specified the
-                                argument value :data:`subprocess.PIPE`, then the stderr output will get added at the
-                                end of this list (enclosed between the list items :data:`STDERR_BEG_MARKER` and
-                                :data:`STDERR_END_MARKER`). if the argument of :paramref:`.output_lines` is a
-                                list, and you specified the argument value :data:`subprocess.STDOUT` then the stderr
-                                output will get merged without any markers into this list in the order they get printed.
-                                specify :data:`subprocess.DEVNULL` to hide any stderr output onto the console/shell
-                                as well as in the :paramref:`.output_lines` list. if you specify `None`
-                                (the default argument) then the stderr output will be printed only on the console.
-    :param decoder_splitter:    callable to decode and split the output from the stdout/stderr streams into a list
+    :param decoder_splitter:    callable to decode and split the output from the `stdout`/`stderr` streams into a list
                                 of string chunks/lines, to be added to and returned by :paramref:`.output_lines`.
+    :param run_kwargs:          kwargs to be passed onto :func:`subprocess.run`, most of them unchanged, like e.g.
+                                :paramref:`~subprocess.run.input`. some of them, will get adopted/changed before
+                                they get passed onto :func:`subprocess.run`:
+
+                                * :paramref:`~subprocess.run.check`: will get passed onto :func:`subprocess.run`
+                                  as `True` if not specified in this kwarg (in order to catch and log the
+                                  :class:`subprocess.CalledProcessError` exception in debug mode).
+                                * :paramref:`~subprocess.Popen.env`: shell environment variables to be used instead of
+                                  the currently set OS shell variable values.
+                                  only if the value of this argument does not get specified or has the value `UNSET`,
+                                  then an isolated dict copy of :attr:`os.environ` will get passed onto
+                                  :func:`subprocess.run` in order to avoid potential runtime errors, caused by a parent
+                                  process (or a concurrent thread) if it modifies :attr:`os.environ` during the creation
+                                  of this subprocess. additionally, with the convertion of the special :class:`_Environ`
+                                  object into a standard dict, the execution will result slightly faster and avoids
+                                  any special method overrides interfering with the child process creation. it also is
+                                  preventing rare errors with multithread-processes that try to change OS env variable
+                                  (e.g. Conda in relation with pip could lead to raise a `RuntimeError: dictionary
+                                  changed size during iteration` exception). specify `None` as the :paramref:`.env`
+                                  value in order to use the original/unisolated :attr:`os.environ` object.
+                                * :paramref:`~subprocess.Popen.stdout`: will be passed to :func:`subprocess.run`
+                                  as :data:`subprocess.PIPE` (instead of None) if a list instance got specified
+                                  as the :paramref:`.output_lines` argument.
+
     :return:                    return code of the executed command or 126 if execution raised any other exception.
     """
-    if shell:
-        all_args: str | list[str] = command_line + (" " + " ".join(extra_args) if extra_args else "")
-    else:
-        all_args = shlex.split(command_line) + list(extra_args)
-    masked_args = mask_token(all_args)
+    masked_args = mask_token(cmd_args)
+
     if app_obj is None:
         app_obj = main_app_instance()
     print_out = dummy_function if app_obj is UNSET else app_obj.print_out if isinstance(app_obj, AppBase) else print
     debug_out = dummy_function if app_obj is UNSET else app_obj.debug_out if isinstance(app_obj, AppBase) else print
-    if env_vars is UNSET:
-        env_vars = os.environ.copy()
+
+    run_kwargs.setdefault('check', True)
+    if run_kwargs.get('env', UNSET) is UNSET:
+        run_kwargs['env'] = os.environ.copy()
+    if isinstance(output_lines, list):
+        run_kwargs.setdefault('stdout', subprocess.PIPE)
 
     debug_out(f"    . executing {masked_args} at {os.getcwd()=} in {os_env_venv()=}")
-    result: subprocess.CompletedProcess | subprocess.CalledProcessError     # having: stdout/stderr/returncode
+
+    result: subprocess.CompletedProcess | subprocess.CalledProcessError         # having: stdout/stderr/returncode
     try:
-        result = subprocess.run(all_args,
-                                stdout=subprocess.PIPE if isinstance(output_lines, list) else None,
-                                stderr=err_redirect,
-                                input=console_input.encode(),
-                                check=True,
-                                shell=shell,
-                                env=env_vars)
+        result = subprocess.run(cmd_args, **run_kwargs)                         # pylint: disable=subprocess-run-check
     except subprocess.CalledProcessError as exc:
         debug_out(f"****  subprocess.run({masked_args}) returned non-zero exit code {exc.returncode}; {exc=}")
         result = exc
@@ -257,7 +253,7 @@ def sh_exec(command_line: str, extra_args: Iterable[str] = (), console_input: st
     if isinstance(output_lines, list):
         if result.stdout:
             output_lines.extend(decoder_splitter(result.stdout))
-        if err_redirect == subprocess.PIPE and result.stderr:
+        if result.stderr and run_kwargs.get('stderr', None) == subprocess.PIPE:
             output_lines.append(STDERR_BEG_MARKER)
             output_lines.extend(decoder_splitter(result.stderr))
             output_lines.append(STDERR_END_MARKER)
@@ -265,36 +261,48 @@ def sh_exec(command_line: str, extra_args: Iterable[str] = (), console_input: st
     return result.returncode
 
 
-# pylint: disable-next=too-many-arguments,too-many-positional-arguments
-def sh_exit_if_exec_err(err_code: int, command_line: str,
-                        extra_args: Iterable[str] = (), output_lines: list[str] | None = None, exit_on_err: bool = True,
-                        exit_msg: str = "", app_obj: ConsoleApp | UnsetType | None = None, shell: bool = False,
-                        env_vars: dict[str, str] | UnsetType | None = UNSET,
-                        err_redirect: int | None = subprocess.DEVNULL,
-                        decoder_splitter: Callable[[bytes], list[str]] = output_line_split) -> int:
-    """ execute command in the current working directory, optionally capturing console output and exit app on error.
+def run_logged_cmd(err_code: int, *cmd_args: str,
+                   output_lines: list[str] | None = None,
+                   exit_on_err: bool | str = True,
+                   app_obj: ConsoleApp | UnsetType | None = None,
+                   decoder_splitter: Callable[[bytes], list[str]] = output_line_split,
+                   **run_kwargs) -> int:
+    """ run command in the current working directory, optionally capturing/logging console output and exiting on error.
 
-    :param err_code:            error code to pass to the console as exit code if the command set an error code and
-                                value of the :paramref:`.exit_on_err` argument is `True`.
-    :param command_line:        command line string to execute. this argument could contain additional command line
-                                arguments, separated by whitespace characters. alternatively use the argument
-                                :paramref:`.extra_args` which allows to pass command line argument values,
-                                with containing space characters.
-    :param extra_args:          optional iterable of extra command line arguments.
-    :param output_lines:        optional list extended with the lines printed to stdout/stderr on execution.
-    :param exit_on_err:         pass False to not exit the app on error.
-    :param exit_msg:            additional text to print on stdout/console if the app debug level is greater or equal
-                                to 1 (:data:`~ae.core.DEBUG_LEVEL_ENABLED`) or if an error occurred.
-    :param app_obj:             :class:`~ae.console.ConsoleApp` instance, used for logging/force-ignorable error.
-    :param shell:               pass True to execute command in the default OS shell (see :func:`sh_exec`).
-    :param env_vars:            OS shell environment variables to be used instead of the console/bash defaults.
-    :param err_redirect:        control how the output on stderr gets captured, redirected and returned. see also
-                                :paramref:`sh_exec.err_redirect` for more details to the supported argument values.
-                                if this argument is not specified or has the value :data:`subprocess.DEVNULL` then the
-                                stderr output will get suppressed on the console and will also not get added to the
-                                list argument in :paramref:`.output_lines`.
-    :param decoder_splitter:    callable to decode and split the output from the stdout/stderr streams into a list
+    :param err_code:            error code to be passed onto the console as exit code if the command set an error code
+                                and the value of the :paramref:`.exit_on_err` argument is `True` or a nonempty string.
+    :param cmd_args:            command line string or a sequence of command name and separate line arguments
+                                to be run/executed on the console/shell.
+    :param output_lines:        optional list extended with the lines printed to `stdout`/`stderr` on execution.
+                                see the :paramref:`~run_cmd.output_lines` argument of :func:`run_cmd` for more details.
+    :param exit_on_err:         specifying `True` (the default) or a nonempty string will shut-down/quit/exit the
+                                currently running app (the Python interpreter) if the executed command set an
+                                error code. a nonempty string will get printed/logged to `stdout` before the exit.
+                                pass `False` or an empty string to not exit the app if a command error occurred.
+    :param app_obj:             optional :class:`~ae.console.ConsoleApp` instance, used for logging and error checking
+                                (with the option to ignore errors if the app got started with the `--force` option).
+                                if not specified or None and if :func:`~ae.core.main_app_instance()` returns
+                                None then the Python :func:`print` function is used for logging.
+                                specify :data:`~ae.base.UNSET` to suppress any printing/logging output.
+    :param decoder_splitter:    callable to decode and split the output from the `stdout`/`stderr` streams into a list
                                 of string chunks/lines, to be added to and returned by :paramref:`.output_lines`.
+    :param run_kwargs:          extra kwargs to be passed onto :func:`run_cmd` and :func:`subprocess.run`. some kwargs
+                                like e.g. :paramref:`~subprocess.run.input` and :paramref:`~subprocess.Popen.shell`
+                                will get passed unchanged onto :func:`run_cmd`, others like
+                                :paramref:`~run_cmd.env` or :paramref:`~run_cmd.stderr`, will be first processed by
+                                this function and/or :func:`run_cmd` before they get passed onto :func:`subprocess.run`:
+
+                                * :paramref:`~subprocess.Popen.stderr`: controls how the output onto `stderr` will get
+                                  captured, redirected and/or returned. if this argument is not specified then the value
+                                  :data:`subprocess.DEVNULL` will get passed onto :func:`run_cmd` and
+                                  :func:`subprocess.run`, which is suppressing any output sent onto `stderr` on the
+                                  console as well as any addition of it to the list argument specified in
+                                  :paramref:`.output_lines`. if you specify the value :data:`subprocess.PIPE` or
+                                  :data:`subprocess.STDOUT` together with a list in the :paramref:`.output_lines`
+                                  argument, then any output onto `stderr` will get added to this list.
+                                  see also the description of the :paramref:`~run_cmd.output_lines` parameter of
+                                  :func:`run_cmd` for more details on the supported values of this parameter.
+
     :return:                    0 on success, or if an error occurred the error number set by the executed command.
     """
     if output_lines is None:
@@ -302,22 +310,25 @@ def sh_exit_if_exec_err(err_code: int, command_line: str,
         output_len = 0
     else:
         output_len = len(output_lines)
-    if app_obj is None:
-        app_obj = cast(ConsoleApp, main_app_instance())  # calls app_obj./ConsoleApp.chk() method
 
-    sh_err = sh_exec(command_line, extra_args=extra_args, output_lines=output_lines, app_obj=app_obj, shell=shell,
-                     env_vars=env_vars, err_redirect=err_redirect, decoder_splitter=decoder_splitter)
+    if app_obj is None:
+        app_obj = cast(ConsoleApp, main_app_instance())  # calls ConsoleApp./app_obj.chk() method
+
+    run_kwargs.setdefault('stderr', subprocess.DEVNULL)
+
+    sh_err = run_cmd(*cmd_args, output_lines=output_lines, app_obj=app_obj, decoder_splitter=decoder_splitter,
+                     **run_kwargs)
 
     if isinstance(app_obj, ConsoleApp) and (app_obj.debug or sh_err and exit_on_err):
         for line in output_lines[output_len:]:
             if app_obj.verbose or not line.startswith("LOG:  "):  # if verbose show mypy's endless (stderr) log entries
                 app_obj.po(" " * 6 + line)
-        command = mask_token(f"{command_line} " + " ".join('"' + _a + '"' if " " in _a else _a for _a in extra_args))
+        command = mask_token(cmd_args)
         if sh_err == 0:
             app_obj.dpo(f"    = successfully executed {command=}")
         else:
-            if exit_msg:
-                app_obj.po(f"      {exit_msg}")
-            app_obj.chk(err_code, not exit_on_err, f"sh_exit_if_exec_err({err_code}, {command!r}) error {sh_err}")
+            if isinstance(exit_on_err, str):
+                app_obj.po(f"      {exit_on_err}")
+            app_obj.chk(err_code, not bool(exit_on_err), f"run_logged_cmd({err_code}, {command!r}) error {sh_err}")
 
     return sh_err
