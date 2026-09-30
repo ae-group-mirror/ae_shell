@@ -1,4 +1,4 @@
-# THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.project_tpls v0.3.102
+# THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.project_tpls v0.3.104
 """ setup of ae namespace module portion shell: shell execution and environment helpers. """
 import pathlib
 import sys
@@ -77,7 +77,7 @@ setup_kwargs: dict[str, Any] = {
     },
     'python_requires': '>=3.12',
     'url': 'https://gitlab.com/ae-group/ae_shell',
-    'version': '0.3.18',
+    'version': '0.3.19',
     'zip_safe': True,
 }
 

@@ -5,7 +5,7 @@ import sys
 import subprocess
 from unittest.mock import PropertyMock, patch
 
-from ae.base import UNSET, camel_to_snake, norm_name, os_path_join, write_file
+from ae.base import UNSET, URI_SVC_SEP, camel_to_snake, norm_name, os_path_join, write_file
 from ae.system import load_env_var_defaults, os_env_venv
 from ae.core import DEBUG_LEVEL_DISABLED, DEBUG_LEVEL_ENABLED, DEBUG_LEVEL_VERBOSE
 from ae.console import MAIN_SECTION_NAME, ConsoleApp
@@ -221,7 +221,7 @@ class TestHelpers:
         assert os.environ == os_env
 
     def test_mask_token(self):
-        url_prefix_str = "https://"  # PDV_REPO_HOST_PROTOCOL
+        url_prefix_str = f"https{URI_SVC_SEP}"      # PDV_REPO_HOST_PROTOCOL
 
         token = "codeberg token does not have a prefix and only contains hex-digits followed by @ and codeberg.org"
         text = f"a text block containing a codeberg URL with a token: {url_prefix_str}UsaNäm:{token}@codeberg.org"
