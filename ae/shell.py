@@ -26,13 +26,13 @@ from collections.abc import Callable, Iterator, MutableMapping
 from contextlib import contextmanager
 from typing import Any, Sequence, cast, overload
 
-from ae.base import UNSET, UnsetType, dummy_function, env_str, norm_name                    # type: ignore
+from ae.base import UNSET, URI_SVC_SEP, UnsetType, dummy_function, env_str, norm_name       # type: ignore
 from ae.system import load_env_var_defaults, os_env_venv                                    # type: ignore
 from ae.core import main_app_instance, AppBase                                              # type: ignore
 from ae.console import MAIN_SECTION_NAME, ConsoleApp                                        # type: ignore
 
 
-__version__ = '0.3.18'
+__version__ = '0.3.19'
 
 
 STDERR_BEG_MARKER = 'vvv   STDERR   vvv'  #: :paramref:`ae.shell.run_cmd.output_lines` begin `stderr` lines marker
@@ -139,7 +139,7 @@ def mask_token(text: str | Sequence[str]) -> str | list[str]:
     else:
         lines = list(text)  # copy to not change text list content
 
-    url_beg = 'https://'  # PDV_REPO_HOST_PROTOCOL
+    url_beg = f"https{URI_SVC_SEP}"  # PDV_REPO_HOST_PROTOCOL
     url_beg_len = len(url_beg)
     for tok_beg, tok_end in ((':', '@codeberg.org'), ('glpat-', '@gitlab.com'), ('ghp_', '@github.com')):
         for idx, line in enumerate(lines):
