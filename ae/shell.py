@@ -16,8 +16,12 @@ to manage shell printouts, OS environment variables and to execute shell command
 * :func:`run_logged_cmd`: extended version of :func:`run_cmd` with logging and error checking.
   after a command is executed and handles application shutdown/termination gracefully.
 
-* :data:`STDERR_BEG_MARKER`: marker used in the console/shell printouts for the beginning of merged-in `stderr` output.
-* :data:`STDERR_END_MARKER`: marker used in the console/shell printouts for the end of merged-in `stderr` output.
+identifiable/locatable string constants:
+
+* 'vvv   STDERR   vvv': list item value, returned in the :paramref:`ae.shell.run_cmd.output_lines` argument,
+  marking the beginning of merged-in `stderr` output lines in the console/shell printouts.
+* '^^^   STDERR   ^^^': list item value, returned in the :paramref:`ae.shell.run_cmd.output_lines` argument,
+  marking the end of merged-in `stderr` output lines in the console/shell printouts.
 """
 import os
 import subprocess
@@ -26,28 +30,24 @@ from collections.abc import Callable, Iterator, MutableMapping
 from contextlib import contextmanager
 from typing import Any, Sequence, cast, overload
 
-from ae.base import UNSET, URI_SVC_SEP, UnsetType, dummy_function, env_str, norm_name       # type: ignore
+from ae.base import UNSET, UnsetType, dummy_function, env_str, norm_name                    # type: ignore
 from ae.system import load_env_var_defaults, os_env_venv                                    # type: ignore
 from ae.core import main_app_instance, AppBase                                              # type: ignore
-from ae.console import MAIN_SECTION_NAME, ConsoleApp                                        # type: ignore
+from ae.console import ConsoleApp                                                           # type: ignore
 
 
-__version__ = '0.3.19'
-
-
-STDERR_BEG_MARKER = 'vvv   STDERR   vvv'  #: :paramref:`ae.shell.run_cmd.output_lines` begin `stderr` lines marker
-STDERR_END_MARKER = '^^^   STDERR   ^^^'  #: end `stderr` lines marker in :paramref:`ae.shell.run_cmd.output_lines`
+__version__ = '0.3.20'
 
 
 def debug_or_verbose(app_obj: ConsoleApp | UnsetType | None = None) -> bool:
     """ determine if the current app runs in debug|verbose mode, while preventing early .get_option() call an app init.
 
     :param app_obj:             optional ConsoleApp instance (def=main_app_instance()).
-    :return:                    a boolean False when the main app debug level is :data:`~ae.core.DEBUG_LEVEL_DISABLED`
+    :return:                    a boolean `False` when the main app debug level is :data:`~ae.core.DEBUG_LEVEL_DISABLED`
                                 and the app option --more_verbose is not specified (in cfg-file or at the command line),
-                                else True.
+                                else `True`.
 
-    .. note:: the return value on app startup/initialization, before the command line parsing, is always True.
+    .. note:: the return value on app startup/initialization, before the command line parsing, is always `True`.
 
     .. hint::
         the debug mode can be activated via the :class:`~ae.console.ConsoleApp` option `debug_level`, specified either
@@ -72,7 +72,7 @@ def get_domain_user_var(variable_name: str, domain: str = "", user: str = "") ->
     :param user:                name/id of the user to get a user-specific value of.
     :return:                    domain/user-specific value of the specified config variable.
     """
-    parts = (MAIN_SECTION_NAME, variable_name.lower(), f'AT_{norm_name(domain)}'.lower(), norm_name(user).lower())
+    parts = ('aeOptions', variable_name.lower(), f'AT_{norm_name(domain)}'.lower(), norm_name(user).lower())
     value = None
     if domain:
         if user:
@@ -117,6 +117,7 @@ def in_os_env(start_dir: str = "") -> Iterator[MutableMapping[str, str]]:
             os.environ.pop(var_name)
 
 
+# noinspection overloads
 @overload
 def mask_token(text: str) -> str: ...       # type: ignore[overload-overlap]
 
@@ -137,9 +138,9 @@ def mask_token(text: str | Sequence[str]) -> str | list[str]:
     if is_str_arg := isinstance(text, str):
         lines = [text]
     else:
-        lines = list(text)  # copy to not change text list content
+        lines = list(text)  # copy to not change text list content in caller
 
-    url_beg = f"https{URI_SVC_SEP}"  # PDV_REPO_HOST_PROTOCOL
+    url_beg = "https://"  # PDV_REPO_HOST_PROTOCOL
     url_beg_len = len(url_beg)
     for tok_beg, tok_end in ((':', '@codeberg.org'), ('glpat-', '@gitlab.com'), ('ghp_', '@github.com')):
         for idx, line in enumerate(lines):
@@ -186,7 +187,7 @@ def run_cmd(*cmd_args: str,
                                 value passed in the kwarg :paramref:`~subprocess.Popen.stderr`: if this argument is a
                                 list, and you specified the argument value :data:`subprocess.PIPE`, then the `stderr`
                                 output will get added at the end of this list (enclosed between the list items
-                                :data:`STDERR_BEG_MARKER` and :data:`STDERR_END_MARKER`). if this argument is a list,
+                                'vvv   STDERR   vvv' and '^^^   STDERR   ^^^'). if this argument is a list,
                                 and you specified the argument value :data:`subprocess.STDOUT` then the `stderr` outputs
                                 will get merged without any markers into this list in the order they get printed.
                                 specify :data:`subprocess.DEVNULL` in :paramref:`~subprocess.Popen.stderr` to hide any
@@ -194,8 +195,8 @@ def run_cmd(*cmd_args: str,
                                 specifying `None` as :paramref:`~subprocess.Popen.stderr` argument value
                                 (the default argument) then the `stderr` output will be printed only on the console.
     :param app_obj:             optional :class:`~ae.core.AppBase`/:class:`~ae.console.ConsoleApp` instance, used for
-                                logging. if not specified or None and if :func:`~ae.core.main_app_instance()` returns
-                                None then the Python :func:`print` function is used.
+                                logging. if not specified or `None` and if :func:`~ae.core.main_app_instance()` returns
+                                `None` then the Python :func:`print` function is used.
                                 specify :data:`~ae.base.UNSET` to suppress any printing/logging output.
     :param decoder_splitter:    callable to decode and split the output from the `stdout`/`stderr` streams into a list
                                 of string chunks/lines, to be added to and returned by :paramref:`.output_lines`.
@@ -206,21 +207,21 @@ def run_cmd(*cmd_args: str,
                                 * :paramref:`~subprocess.run.check`: will get passed onto :func:`subprocess.run`
                                   as `True` if not specified in this kwarg (in order to catch and log the
                                   :class:`subprocess.CalledProcessError` exception in debug mode).
-                                * :paramref:`~subprocess.Popen.env`: shell environment variables to be used instead of
-                                  the currently set OS shell variable values.
-                                  only if the value of this argument does not get specified or has the value `UNSET`,
-                                  then an isolated dict copy of :attr:`os.environ` will get passed onto
-                                  :func:`subprocess.run` in order to avoid potential runtime errors, caused by a parent
-                                  process (or a concurrent thread) if it modifies :attr:`os.environ` during the creation
-                                  of this subprocess. additionally, with the convertion of the special :class:`_Environ`
-                                  object into a standard dict, the execution will result slightly faster and avoids
-                                  any special method overrides interfering with the child process creation. it also is
-                                  preventing rare errors with multithread-processes that try to change OS env variable
+                                * :paramref:`~subprocess.Popen.env`: shell environment variables to be used instead
+                                  of the currently set OS shell variable values. only if the value of this argument
+                                  does not get specified or has the value :data:`~ae.base.UNSET`, then an isolated
+                                  dict copy of :attr:`os.environ` will get passed onto :func:`subprocess.run` in order
+                                  to avoid potential runtime errors, caused by a parent process (or a concurrent thread)
+                                  if it modifies :attr:`os.environ` during the creation of this subprocess.
+                                  additionally, with the conversion of the special :class:`_Environ` object into
+                                  a standard dict, the execution will result slightly faster and avoids any special
+                                  method overrides interfering with the child process creation. it also is preventing
+                                  rare errors with multithread-processes that try to change OS env variable
                                   (e.g. Conda in relation with pip could lead to raise a `RuntimeError: dictionary
                                   changed size during iteration` exception). specify `None` as the :paramref:`.env`
                                   value in order to use the original/unisolated :attr:`os.environ` object.
                                 * :paramref:`~subprocess.Popen.stdout`: will be passed to :func:`subprocess.run`
-                                  as :data:`subprocess.PIPE` (instead of None) if a list instance got specified
+                                  as :data:`subprocess.PIPE` (instead of `None`) if a list instance got specified
                                   as the :paramref:`.output_lines` argument.
 
     :return:                    return code of the executed command or 126 if execution raised any other exception.
@@ -246,7 +247,7 @@ def run_cmd(*cmd_args: str,
     except subprocess.CalledProcessError as exc:
         debug_out(f"****  subprocess.run({masked_args}) returned non-zero exit code {exc.returncode}; {exc=}")
         result = exc
-    except Exception as exc:                                         # pylint: disable=broad-except
+    except Exception as exc:                                                    # pylint: disable=broad-except
         print_out(f"****  subprocess.run({masked_args}) raised exception {exc}")
         return (126, )[0]       # put return/exit code into tuple for global code search
 
@@ -254,9 +255,9 @@ def run_cmd(*cmd_args: str,
         if result.stdout:
             output_lines.extend(decoder_splitter(result.stdout))
         if result.stderr and run_kwargs.get('stderr', None) == subprocess.PIPE:
-            output_lines.append(STDERR_BEG_MARKER)
+            output_lines.append('vvv   STDERR   vvv')
             output_lines.extend(decoder_splitter(result.stderr))
-            output_lines.append(STDERR_END_MARKER)
+            output_lines.append('^^^   STDERR   ^^^')
 
     return result.returncode
 
@@ -281,8 +282,8 @@ def run_logged_cmd(err_code: int, *cmd_args: str,
                                 pass `False` or an empty string to not exit the app if a command error occurred.
     :param app_obj:             optional :class:`~ae.console.ConsoleApp` instance, used for logging and error checking
                                 (with the option to ignore errors if the app got started with the `--force` option).
-                                if not specified or None and if :func:`~ae.core.main_app_instance()` returns
-                                None then the Python :func:`print` function is used for logging.
+                                if not specified or `None` and if :func:`~ae.core.main_app_instance()` returns
+                                `None` then the Python :func:`print` function is used for logging.
                                 specify :data:`~ae.base.UNSET` to suppress any printing/logging output.
     :param decoder_splitter:    callable to decode and split the output from the `stdout`/`stderr` streams into a list
                                 of string chunks/lines, to be added to and returned by :paramref:`.output_lines`.
