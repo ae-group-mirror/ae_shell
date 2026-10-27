@@ -5,14 +5,13 @@ import sys
 import subprocess
 from unittest.mock import PropertyMock, patch
 
-from ae.base import UNSET, URI_SVC_SEP, camel_to_snake, norm_name, os_path_join, write_file
+from ae.base import UNSET, camel_to_snake, norm_name, os_path_join, write_file
 from ae.system import load_env_var_defaults, os_env_venv
 from ae.core import DEBUG_LEVEL_DISABLED, DEBUG_LEVEL_ENABLED, DEBUG_LEVEL_VERBOSE
-from ae.console import MAIN_SECTION_NAME, ConsoleApp
+from ae.console import ConsoleApp
 
 
 from ae.shell import (
-    STDERR_BEG_MARKER, STDERR_END_MARKER,
     debug_or_verbose, get_domain_user_var, hint, in_os_env, mask_token,
     output_line_split, output_zero_split, run_cmd, run_logged_cmd)
 
@@ -59,7 +58,7 @@ class TestHelpers:
         var_name = 'conf_var'
         domain = "tst_host.tst"
         user = "TstUserName"
-        prefix = norm_name(camel_to_snake(MAIN_SECTION_NAME)).upper()
+        prefix = norm_name(camel_to_snake('aeOptions')).upper()
         var_name_part = norm_name(camel_to_snake(var_name.lower())).upper()
         domain_part = norm_name(camel_to_snake(domain.lower())).upper()
         user_part = norm_name(camel_to_snake(user.lower())).upper()
@@ -86,7 +85,7 @@ class TestHelpers:
         var_name = 'conf_var'
         domain = "tst_host.tst"
         user = "TstUserName"
-        prefix = norm_name(camel_to_snake(MAIN_SECTION_NAME)).upper()
+        prefix = norm_name(camel_to_snake('aeOptions')).upper()
         var_name_part = norm_name(camel_to_snake(var_name.lower())).upper()
         domain_part = norm_name(camel_to_snake(domain.lower())).upper()
         user_part = norm_name(camel_to_snake(user.lower())).upper()
@@ -107,7 +106,7 @@ class TestHelpers:
         var_name = 'conf_var'
         domain = "tst_host.tst"
         user = "TstUserName"
-        prefix = norm_name(camel_to_snake(MAIN_SECTION_NAME)).upper()
+        prefix = norm_name(camel_to_snake('aeOptions')).upper()
         var_name_part = norm_name(camel_to_snake(var_name.lower())).upper()
         domain_part = norm_name(camel_to_snake(domain.lower())).upper()
         user_part = norm_name(camel_to_snake(user.lower())).upper()
@@ -126,7 +125,7 @@ class TestHelpers:
         var_name = 'conf_var'
         domain = "tst_host.tst"
         user = "TstUserName"
-        prefix = norm_name(camel_to_snake(MAIN_SECTION_NAME)).upper()
+        prefix = norm_name(camel_to_snake('aeOptions')).upper()
         var_name_part = norm_name(camel_to_snake(var_name.lower())).upper()
         domain_part = norm_name(camel_to_snake(domain.lower())).upper()
         user_part = norm_name(camel_to_snake(user.lower())).upper()
@@ -221,7 +220,7 @@ class TestHelpers:
         assert os.environ == os_env
 
     def test_mask_token(self):
-        url_prefix_str = f"https{URI_SVC_SEP}"      # PDV_REPO_HOST_PROTOCOL
+        url_prefix_str = f"https://"      # PDV_REPO_HOST_PROTOCOL
 
         token = "codeberg token does not have a prefix and only contains hex-digits followed by @ and codeberg.org"
         text = f"a text block containing a codeberg URL with a token: {url_prefix_str}UsaNäm:{token}@codeberg.org"
@@ -402,9 +401,9 @@ class TestShellExecutions:
             assert run_cmd("cmd_line", output_lines=output_lines, stderr=subprocess.PIPE) == RETURN_CODE
 
             assert output_lines[0] == STDOUT_LINE.decode()
-            assert output_lines[1] == STDERR_BEG_MARKER
+            assert output_lines[1] == 'vvv   STDERR   vvv'
             assert output_lines[2] == STDERR_LINE.decode()
-            assert output_lines[3] == STDERR_END_MARKER
+            assert output_lines[3] == '^^^   STDERR   ^^^'
 
             output_lines = []
 
@@ -413,8 +412,8 @@ class TestShellExecutions:
             assert len(output_lines) == 1
             assert output_lines[0] == STDOUT_LINE.decode()
             assert STDERR_LINE.decode() not in output_lines
-            assert STDERR_BEG_MARKER not in output_lines
-            assert STDERR_END_MARKER not in output_lines
+            assert 'vvv   STDERR   vvv' not in output_lines
+            assert '^^^   STDERR   ^^^' not in output_lines
 
             output_lines = ['first line', 'second line']
 
@@ -425,8 +424,8 @@ class TestShellExecutions:
             assert output_lines[1] == 'second line'
             assert output_lines[2] == STDOUT_LINE.decode()
             assert STDERR_LINE.decode() not in output_lines
-            assert STDERR_BEG_MARKER not in output_lines
-            assert STDERR_END_MARKER not in output_lines
+            assert 'vvv   STDERR   vvv' not in output_lines
+            assert '^^^   STDERR   ^^^' not in output_lines
 
     def test_run_cmd_stderr_redirection(self, capfd, cons_app):  # pytest/capsys replaces sys.stdout/.stderr
         args = [sys.executable, "-c", "import sys; print('tst_std_err', file=sys.stderr); print('tst_std_out')"]
@@ -462,7 +461,7 @@ class TestShellExecutions:
 
         out, err = capfd.readouterr()
         assert err == ''
-        assert redirected == ['tst_std_out', STDERR_BEG_MARKER, 'tst_std_err', STDERR_END_MARKER]
+        assert redirected == ['tst_std_out', 'vvv   STDERR   vvv', 'tst_std_err', '^^^   STDERR   ^^^']
 
         redirected = []
 
@@ -475,7 +474,7 @@ class TestShellExecutions:
     def test_run_logged_cmd_any_command(self, capsys, cons_app):
         output = ['old output']
 
-        with patch('ae.console.ConsoleApp.debug', new_callable=PropertyMock, return_value=True):  # with app_obj kwarg
+        with patch('ae.core.AppBase.debug', new_callable=PropertyMock, return_value=True):  # with app_obj kwarg
             ret = run_logged_cmd(0, "git", "--version", output_lines=output, exit_on_err=False, app_obj=cons_app)
 
         assert ret == 0
@@ -522,7 +521,7 @@ class TestShellExecutions:
     def test_run_logged_cmd_with_app(self, capsys, cons_app):
         output = []
 
-        with patch('ae.console.ConsoleApp.debug', new_callable=PropertyMock, return_value=False):
+        with patch('ae.core.AppBase.debug', new_callable=PropertyMock, return_value=False):
             ret = run_logged_cmd(0, "_err", output_lines=output, exit_on_err=False, stderr=subprocess.STDOUT)
 
         assert ret == (126, )[0]
@@ -534,7 +533,7 @@ class TestShellExecutions:
     def test_run_logged_cmd_with_app_kwarg_and_empty_exit_on_err_msg(self, capsys, cons_app):
         output = []
 
-        with patch('ae.console.ConsoleApp.debug', new_callable=PropertyMock, return_value=True):  # with app_obj kwarg
+        with patch('ae.core.AppBase.debug', new_callable=PropertyMock, return_value=True):  # with app_obj kwarg
             ret = run_logged_cmd(0, 'error-command', output_lines=output, exit_on_err="", app_obj=cons_app)
 
         assert ret == (126, )[0]
@@ -547,7 +546,7 @@ class TestShellExecutions:
         output = ['any old line output']
 
         with (patch('ae.shell.run_cmd', new=lambda *_, **kwargs: kwargs['output_lines'].append('new out line') or 0),
-              patch('ae.console.ConsoleApp.debug', new_callable=PropertyMock, return_value=True)):
+              patch('ae.core.AppBase.debug', new_callable=PropertyMock, return_value=True)):
             ret = run_logged_cmd(369, "any_cmd", output_lines=output)  # extended output_lines and ret==0
 
         assert ret == 0
